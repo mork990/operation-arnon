@@ -32,7 +32,7 @@ import { UpscalePass, DynRes } from './resolution.js';
 
 const $ = id => document.getElementById(id);
 // build number in the menu and the pause card: tells a play-tester which version (and not a cached older script) is running
-const BUILD = 20; $('build').textContent = '· גרסה ' + BUILD;
+const BUILD = 21; $('build').textContent = '· גרסה ' + BUILD;
 const canvas = $('c');
 
 function err(msg) { const e = $('err'); e.hidden = false; e.textContent = msg; }
@@ -41,6 +41,9 @@ addEventListener('unhandledrejection', e => { err('שגיאה בטעינת המ�
 
 // ---------- renderer & scene ----------
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false });
+// phones: bigger images are resampled at upload (three.js does it against capabilities.maxTextureSize; the shadow map read
+// its limit at construction). A 1024 px texture with mips is 5.3 MB, and on an iPhone it counts against the tab's ceiling
+if (G.isTouch) renderer.capabilities.maxTextureSize = Math.min(renderer.capabilities.maxTextureSize, G.lowMem ? 512 : 1024);
 installToneMapping(renderer); renderer.toneMappingExposure = 1.06; // AgX with a contrast/saturation look (exposure.js)
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 G.renderer = renderer;
@@ -90,7 +93,7 @@ Object.assign(grade.uniforms, autoExp.uniforms, sunFx.uniforms, GRADE_U); // sha
 
 // ---------- quality ----------
 // render resolution per quality level; phones have dense screens and get a higher cap (dynamic resolution protects the frame rate)
-function basePR(q) { const dpr = devicePixelRatio || 1; return G.isTouch ? [Math.min(dpr, 1.1), Math.min(dpr, 1.8), Math.min(dpr, 2.4)][q] : [.75, Math.min(dpr, 1.3), Math.min(dpr, 2)][q]; }
+function basePR(q) { const dpr = devicePixelRatio || 1; return G.isTouch ? [Math.min(dpr, 1.1), Math.min(dpr, G.lowMem ? 1.5 : 1.8), Math.min(dpr, G.lowMem ? 1.8 : 2.4)][q] : [.75, Math.min(dpr, 1.3), Math.min(dpr, 2)][q]; }
 // the canvas keeps the display's resolution; the scene renders at basePR x dynamic scale and UpscalePass resamples it
 // (phones: only when dynamic resolution has dropped; an always-on full-res pass costs fill rate they don't have)
 function displayPR() { return G.isTouch ? basePR(G.quality) : Math.max(basePR(G.quality), Math.min(devicePixelRatio || 1, 2)); }
@@ -102,7 +105,7 @@ function applyQuality(q) {
   renderer.shadowMap.enabled = q > 0; sun.castShadow = q > 0;
   // low quality has no live shadow map: the baked town shadow covers everything
   GIU.uSunNear.value = q > 0 ? 40 : 0;
-  const ms = q === 2 ? 4096 : 2048; sun.shadow.mapSize.set(ms, ms); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
+  const ms = (q === 2 ? 4096 : 2048) / (G.lowMem ? 2 : 1); sun.shadow.mapSize.set(ms, ms); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
   scene.traverse(o => { if (o.material) [].concat(o.material).forEach(m => m.needsUpdate = true); });
   // compile every shader now so nothing hitches the first time it comes into view (entering the building, first explosion...)
   precompile();
@@ -165,9 +168,9 @@ async function boot() {
   // ambient light visibility: the town at 2 m, the target building at 40 cm (see gi.js)
   $('loadtxt').textContent = 'מחשב תאורה…'; await new Promise(r => setTimeout(r, 30));
   const giT0 = performance.now();
-  bakeVolume(renderer, occ, { slot: 'a', min: new THREE.Vector3(-300, 0, -176), max: new THREE.Vector3(264, 24, 176), cell: 2, dirs: 64, res: G.isTouch ? 1536 : 2048, reach: 700, bounce: .45, strength: .8 });
+  bakeVolume(renderer, occ, { slot: 'a', min: new THREE.Vector3(-300, 0, -176), max: new THREE.Vector3(264, 24, 176), cell: 2, dirs: 64, res: G.lowMem ? 1024 : G.isTouch ? 1536 : 2048, reach: 700, bounce: .45, strength: .8 });
   bakeVolume(renderer, occ, { slot: 'b', min: new THREE.Vector3(31.6, 0, -20.4), max: new THREE.Vector3(48.4, 19.2, -5.6), cell: .4, dirs: 96, res: 1024, reach: 600, bounce: 1.6, strength: 1 });
-  bakeSunShadow(renderer, occ, { min: new THREE.Vector3(-300, 0, -176), max: new THREE.Vector3(264, 30, 176), sunDir: G.sunDir, res: 2048, near: 40 });
+  bakeSunShadow(renderer, occ, { min: new THREE.Vector3(-300, 0, -176), max: new THREE.Vector3(264, 30, 176), sunDir: G.sunDir, res: G.lowMem ? 1024 : 2048, near: 40 });
   occ.dispose(); G.giBakeMs = Math.round(performance.now() - giT0);
   G.fx = new FX(); G.player = new Player(); G.weapon = new Weapon(); G.ui = new UI(); G.guide = new Guide(); G.mission = new Mission();
   // passes that need the viewmodel/scene ready

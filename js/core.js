@@ -6,6 +6,9 @@ export const G = {
   renderer: null, scene: null, camera: null, composer: null,
   clock: null, time: 0, dt: 0,
   isTouch: matchMedia('(pointer:coarse)').matches,
+  // iPhone and iPad: every browser there is WebKit, which kills a tab past a fixed memory ceiling (far below desktop
+  // Chrome's) and then reloads it in a loop, so textures, audio, render targets and loading are budgeted down there
+  lowMem: /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) || globalThis.LOWMEM === true,
   quality: 2,
   state: 'loading', // loading | menu | briefing | play | cutscene | paused | end
   colliders: [],     // static collider geometries (world space BufferGeometry)
