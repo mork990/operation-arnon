@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>מבצע ארנון</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;900&family=IBM+Plex+Mono:wght@500;600&family=Noto+Kufi+Arabic:wght@700&display=swap">
+<style>
+:root{color-scheme:dark;--bg:#0f100d;--panel:rgba(15,16,12,.78);--line:rgba(232,220,196,.14);--ink:#e8dcc4;--dim:#a39a86;--amber:#f2b84b;--red:#e0533d;--blue:#9ac0e6;--green:#7fb07a;--olive:#6b7045}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0;background:var(--bg);overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
+body{font-family:Heebo,"Arial Hebrew",Arial,sans-serif;color:var(--ink);direction:rtl}
+#c{position:fixed;inset:0;width:100%;height:100%;display:block}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.screen{position:fixed;inset:0;z-index:20;display:flex;padding:calc(20px + env(safe-area-inset-top,0px)) 20px calc(20px + env(safe-area-inset-bottom,0px))}
+.eyebrow{font-family:"IBM Plex Mono",monospace;font-size:12px;letter-spacing:.16em;color:var(--amber)}
+.btn{background:var(--amber);color:#1a1408;border:0;border-radius:4px;padding:13px 26px;font-weight:900;font-size:17px;letter-spacing:.02em}
+.btn:disabled{opacity:.45;cursor:progress}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line);font-weight:500}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:4px;overflow:hidden}
+.seg button{background:none;border:0;padding:7px 12px;font-size:13px;color:var(--dim)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:#15130e;font-weight:700}
+/* loading + menu */
+#loading{align-items:flex-end;justify-content:flex-start;background:radial-gradient(120% 90% at 80% 20%,#23241d 0,#0c0d0a 70%)}
+#loading .box{max-width:520px;width:100%;display:grid;gap:14px}
+.title{font-weight:900;font-size:min(11vw,15vh,112px);line-height:.9;margin:0;letter-spacing:-.01em;text-wrap:balance}
+.bar{height:3px;background:rgba(232,220,196,.12);overflow:hidden}.bar i{display:block;height:100%;background:var(--amber);transform-origin:right;transform:scaleX(0);transition:transform .2s}
+.small{font-size:13px;color:var(--dim);line-height:1.6;max-width:60ch}
+#menu{align-items:flex-end;justify-content:flex-start;overflow:auto;background:linear-gradient(270deg,rgba(10,10,8,.88) 0,rgba(10,10,8,.55) 42%,rgba(10,10,8,0) 72%),linear-gradient(0deg,rgba(10,10,8,.7),transparent 40%)}
+#menu .col{max-width:560px;display:grid;gap:min(18px,2.4vh);margin-top:auto}
+#menu .lede{font-size:min(18px,3vh);line-height:1.55;color:#d8ccb4;margin:0;max-width:44ch}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.settings{display:grid;grid-template-columns:auto 1fr;gap:10px 14px;align-items:center;font-size:13px;color:var(--dim);border-top:1px solid var(--line);padding-top:14px}
+.settings input[type=range]{width:100%;accent-color:var(--amber)}
+.keys{font-size:12px;color:var(--dim);display:flex;flex-wrap:wrap;gap:6px 14px}
+kbd{font-family:"IBM Plex Mono",monospace;font-size:11px;border:1px solid var(--line);border-bottom-width:2px;border-radius:3px;padding:0 5px;color:var(--ink)}
+/* briefing */
+#briefing{background:#0c0d0a;gap:20px;align-items:stretch}
+#briefing .mapwrap{flex:1.4;position:relative;border:1px solid var(--line);min-width:0}
+#map{width:100%;height:100%;display:block}
+#briefing .side{flex:1;display:flex;flex-direction:column;gap:14px;min-width:0;max-width:520px}
+#brieflines{list-style:none;margin:0;padding:0;flex:1;overflow:auto;display:grid;align-content:start;gap:10px;font-size:16px;line-height:1.55}
+#brieflines li{border-right:2px solid var(--amber);padding-right:12px;animation:in .4s ease-out}
+@keyframes in{from{opacity:0;transform:translateY(6px)}}
+#bgo{opacity:.5}#bgo.ready{opacity:1}
+@media (max-width:760px){#briefing{flex-direction:column}#briefing .mapwrap{flex:none;height:42vh}#brieflines{font-size:14px}}
+/* HUD */
+#hud{position:fixed;inset:0;z-index:10;pointer-events:none}
+#obj{position:absolute;top:calc(16px + env(safe-area-inset-top,0px));right:18px;max-width:min(420px,70vw);display:grid;gap:2px;border-right:3px solid var(--amber);padding:4px 12px 4px 0;text-shadow:0 1px 3px rgba(0,0,0,.8)}
+#obj b{font-weight:700;font-size:17px}#obj span{font-size:13px;color:#d6cab2}
+#obj.pulse{animation:pl 1.2s ease-out}@keyframes pl{0%{transform:translateX(-8px);opacity:0}}
+#clockbox{position:absolute;top:calc(14px + env(safe-area-inset-top,0px));left:18px;text-align:left;direction:ltr;text-shadow:0 1px 3px rgba(0,0,0,.8)}
+#clock{font-size:20px;font-weight:600;letter-spacing:.04em}
+#fps{font-size:11px;color:var(--dim);display:block}
+#timerbox{position:absolute;top:calc(64px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);text-align:center;background:var(--panel);border:1px solid var(--line);padding:6px 14px;border-radius:3px}
+#timerl{font-size:12px;color:var(--dim);display:block}#timerv{font-size:24px;color:var(--amber);font-weight:600}
+#ammobox{position:absolute;bottom:calc(20px + env(safe-area-inset-bottom,0px));left:22px;direction:ltr;display:grid;gap:4px;text-shadow:0 1px 3px rgba(0,0,0,.8)}
+#ammo{font-size:40px;font-weight:600;line-height:1}#ammo.low{color:var(--red)}
+#res{font-size:16px;color:#d6cab2}.wname{font-size:11px;letter-spacing:.14em;color:var(--dim)}
+#hp{position:absolute;bottom:calc(24px + env(safe-area-inset-bottom,0px));right:22px;width:190px;height:5px;background:rgba(232,220,196,.18)}
+#hpv{height:100%;background:var(--ink);transform-origin:right;transition:transform .15s}
+#hp.crit #hpv{background:var(--red)}
+#hp::before{content:"בריאות";position:absolute;bottom:9px;right:0;font-size:11px;color:var(--dim);letter-spacing:.08em}
+#cross{position:absolute;left:50%;top:50%;--gap:10px;width:0;height:0;transition:opacity .12s}
+#cross i{position:absolute;background:rgba(240,235,220,.9);box-shadow:0 0 2px rgba(0,0,0,.8)}
+#cross i:nth-child(1){width:2px;height:8px;left:-1px;top:calc(-1*var(--gap) - 8px)}#cross i:nth-child(2){width:2px;height:8px;left:-1px;top:var(--gap)}
+#cross i:nth-child(3){height:2px;width:8px;top:-1px;left:calc(-1*var(--gap) - 8px)}#cross i:nth-child(4){height:2px;width:8px;top:-1px;left:var(--gap)}
+#cross i:nth-child(5){width:2px;height:2px;left:-1px;top:-1px}
+#hitm{position:absolute;left:50%;top:50%;width:26px;height:26px;margin:-13px 0 0 -13px;opacity:0;transition:opacity .08s}
+#hitm::before,#hitm::after{content:"";position:absolute;left:12px;top:0;width:2px;height:26px;background:#fff;transform:rotate(45deg);box-shadow:0 0 3px #000}
+#hitm::after{transform:rotate(-45deg)}#hitm.kill::before,#hitm.kill::after{background:var(--red)}
+#vign{position:absolute;inset:0;opacity:0;background:radial-gradient(ellipse at center,transparent 45%,rgba(120,10,5,.55) 100%)}
+#blood{position:absolute;inset:0;opacity:0;pointer-events:none;background:radial-gradient(ellipse at 10% 20%,rgba(120,0,0,.55),transparent 38%),radial-gradient(ellipse at 88% 75%,rgba(110,0,0,.5),transparent 40%),radial-gradient(ellipse at 50% 110%,rgba(90,0,0,.55),transparent 45%),radial-gradient(ellipse at 95% 10%,rgba(100,0,0,.35),transparent 30%);mix-blend-mode:multiply}
+#ammowarn{position:absolute;left:50%;top:calc(50% + 34px);transform:translateX(-50%);font-size:13px;font-weight:700;color:#ffcf7a;text-shadow:0 1px 3px #000;pointer-events:none;white-space:nowrap}
+#dmgarcs{position:absolute;left:50%;top:50%;width:0;height:0}
+#dmgarcs i{position:absolute;left:-60px;top:-160px;width:120px;height:26px;border-top:4px solid rgba(224,83,61,.9);border-radius:50%/100% 100% 0 0;transform-origin:60px 160px}
+#sub{position:absolute;bottom:calc(92px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);max-width:min(760px,88vw);text-align:center;opacity:0;transition:opacity .2s;background:rgba(8,8,6,.62);padding:8px 16px;border-radius:3px}
+#sub.on{opacity:1}#subwho{font-size:12px;font-weight:700;letter-spacing:.06em;display:block;margin-bottom:2px}#subtxt{font-size:18px;line-height:1.45}
+#sub.radio #subwho::before{content:"📻 ";font-size:0}
+#prompt{position:absolute;left:50%;top:calc(50% + 70px);transform:translateX(-50%);text-align:center;opacity:0;transition:opacity .15s;min-width:220px}
+#prompt.on{opacity:1}#prompttxt{font-size:15px;background:rgba(8,8,6,.7);padding:6px 12px;border-radius:3px;display:inline-block}
+#prompt .pb{height:3px;background:rgba(232,220,196,.2);margin-top:6px}#promptbar{height:100%;background:var(--amber);width:0}
+#prompt kbd{margin-left:6px}
+#toast{position:absolute;top:30%;left:50%;transform:translate(-50%,-6px);opacity:0;transition:.25s;background:rgba(8,8,6,.8);padding:8px 16px;border-radius:3px;font-weight:700}
+#toast.show{opacity:1;transform:translate(-50%,0)}#toast.warn{color:var(--red);border:1px solid rgba(224,83,61,.5)}
+#flash{position:fixed;inset:0;background:#fff;opacity:0;z-index:11;pointer-events:none}
+#fade{position:fixed;inset:0;background:#000;opacity:0;z-index:15;pointer-events:none}
+#bpause{position:absolute;top:calc(128px + env(safe-area-inset-top,0px));left:18px;pointer-events:auto;background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:4px 12px;font-size:13px;display:none}
+body.touch #bpause{display:block}
+body.touch #keyhelp{display:none}
+/* touch */
+#touch{position:fixed;inset:0;z-index:9}
+#lookzone{position:absolute;inset:0}
+#stick{position:absolute;width:120px;height:120px;margin:-60px 0 0 -60px;border:2px solid rgba(232,220,196,.3);border-radius:50%;opacity:0;pointer-events:none}
+#stick.on{opacity:1}#knob{position:absolute;left:50%;top:50%;width:50px;height:50px;margin:-25px 0 0 -25px;border-radius:50%;background:rgba(232,220,196,.35)}
+.tb{position:absolute;border-radius:50%;border:2px solid rgba(232,220,196,.35);background:rgba(15,16,12,.35);color:var(--ink);font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;text-align:center;line-height:1.1}
+.tb.down,.tb.lit{background:rgba(242,184,75,.45);border-color:var(--amber)}
+#bFire{right:calc(28px + env(safe-area-inset-right,0px));bottom:calc(90px + env(safe-area-inset-bottom,0px));width:92px;height:92px;font-size:15px}
+#bAds{right:calc(140px + env(safe-area-inset-right,0px));bottom:calc(150px + env(safe-area-inset-bottom,0px));width:62px;height:62px}
+#bReload{right:calc(38px + env(safe-area-inset-right,0px));bottom:calc(200px + env(safe-area-inset-bottom,0px));width:54px;height:54px;font-size:12px}
+#bCrouch{right:calc(128px + env(safe-area-inset-right,0px));bottom:calc(60px + env(safe-area-inset-bottom,0px));width:54px;height:54px;font-size:12px}
+#bUse{left:50%;transform:translateX(-50%);bottom:calc(150px + env(safe-area-inset-bottom,0px));width:auto;height:48px;border-radius:24px;padding:0 20px;background:rgba(242,184,75,.3)}
+body.touch #ammobox{bottom:auto;top:calc(52px + env(safe-area-inset-top,0px))}
+body.touch #hp{bottom:auto;top:calc(90px + env(safe-area-inset-top,0px));width:140px}
+body.touch #sub{bottom:auto;top:calc(110px + env(safe-area-inset-top,0px))}
+/* guidance */
+.wp{position:absolute;left:0;top:0;width:0;height:0;pointer-events:none}
+.wp .dia{position:absolute;left:-11px;top:-11px;width:18px;height:18px;border:2px solid var(--amber);transform:rotate(45deg);background:rgba(242,184,75,.18);box-shadow:0 0 8px rgba(0,0,0,.6)}
+.wp.use .dia{border-radius:50%;transform:none;animation:ring 1.2s infinite}
+@keyframes ring{0%{box-shadow:0 0 0 0 rgba(242,184,75,.7)}100%{box-shadow:0 0 0 14px rgba(242,184,75,0)}}
+.wp .lbl{position:absolute;top:-38px;left:0;transform:translateX(-50%);white-space:nowrap;font-size:13px;font-weight:700;color:var(--amber);text-shadow:0 1px 3px #000}
+.wp .dist{position:absolute;top:14px;left:0;transform:translateX(-50%);white-space:nowrap;font-size:12px;color:var(--ink);text-shadow:0 1px 3px #000;font-family:"IBM Plex Mono",monospace}
+.wp.near .dia{opacity:.5}
+#wparrow{position:absolute;left:0;top:0;width:0;height:0;border-left:11px solid transparent;border-right:11px solid transparent;border-bottom:20px solid var(--amber);margin:-10px 0 0 -11px;filter:drop-shadow(0 0 3px #000)}
+.tag{position:absolute;left:0;top:0;transform-origin:0 0;font-size:11px;font-weight:700;white-space:nowrap;pointer-events:none;text-shadow:0 1px 2px #000;margin-left:-40px;width:80px;text-align:center}
+.tag::after{content:"";display:block;width:0;height:0;margin:2px auto 0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid currentColor}
+.tag .hpb{display:block;width:44px;height:3px;margin:2px auto 0;background:rgba(0,0,0,.5)}.tag .hpb i{display:block;height:100%;transform-origin:right}
+.tag.team{color:var(--blue)}.tag.hostage{color:var(--green)}.tag.down{color:#ff6a55;font-size:12px;animation:blink 1s infinite}@keyframes blink{50%{opacity:.55}}
+#stagebox{position:absolute;top:calc(84px + env(safe-area-inset-top,0px));right:18px;font-size:12px;color:var(--dim);text-shadow:0 1px 2px #000}
+#stagen{font-family:"IBM Plex Mono",monospace;letter-spacing:.06em;color:var(--amber)}
+#stages{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:2px}
+#stages li{padding-right:14px;position:relative;opacity:.55}#stages li::before{content:"";position:absolute;right:0;top:6px;width:6px;height:6px;border:1px solid currentColor;border-radius:50%}
+#stages li.done{opacity:.4;text-decoration:line-through}#stages li.done::before{background:currentColor}
+#stages li.cur{opacity:1;color:var(--ink);font-weight:700}#stages li.cur::before{background:var(--amber);border-color:var(--amber)}
+body.touch #stages{display:none}
+#hint{position:absolute;top:calc(118px + env(safe-area-inset-top,0px));left:50%;transform:translate(-50%,8px);opacity:0;transition:.3s;background:rgba(8,8,6,.75);border:1px solid var(--line);padding:8px 14px;border-radius:3px;font-size:14px;white-space:nowrap;max-width:92vw;white-space:normal;text-align:center}
+#hint.on{opacity:1;transform:translate(-50%,0)}
+body.touch #hint{bottom:auto;top:calc(170px + env(safe-area-inset-top,0px))}
+.howto{display:grid;gap:6px;font-size:14px;color:#d6cab2;border-top:1px solid var(--line);padding-top:10px}
+.howto ol{margin:0;padding-right:20px;display:grid;gap:2px}
+/* overlays */
+.ov{position:fixed;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;background:rgba(8,8,6,.78);padding:20px}
+.card{background:#14150f;border:1px solid var(--line);max-width:620px;width:100%;padding:26px;display:grid;gap:14px;max-height:88vh;overflow:auto}
+.card h2{margin:0;font-size:28px;font-weight:900}
+.card p{margin:0;line-height:1.65;color:#d6cab2}
+#end{background:#050504}
+#end .card{background:none;border:0;max-width:680px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border:1px solid var(--line)}
+.stats div{background:#0d0e0a;padding:12px}.stats b{display:block;font-size:24px;font-family:"IBM Plex Mono",monospace}.stats span{font-size:12px;color:var(--dim)}
+@media (max-width:520px){.stats{grid-template-columns:repeat(2,1fr)}}
+.credits{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:2px 16px}@media (max-width:520px){.credits{grid-template-columns:1fr}}
+.dedic{border-right:3px solid var(--amber);padding-right:14px;font-size:17px}
+#err{position:fixed;z-index:50;inset:auto 16px 16px;background:#3a1510;color:#ffd9cc;padding:12px;border-radius:4px;font-size:14px}
+
+/* ---------- phone layout (landscape, thumbs) ---------- */
+.touch-only{display:none}
+body.touch .touch-only{display:flex}
+body.touch span.touch-only{display:inline}
+#rotate{display:none}
+body.touch{-webkit-touch-callout:none}
+@media (orientation:portrait){body.touch #rotate{display:flex;position:fixed;inset:0;z-index:60;background:#0c0d0a;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--ink);text-align:center;padding:24px}body.touch #rotate b{font-size:20px}body.touch #rotate span{color:var(--dim);font-size:14px}}
+body.touch .tb{background:rgba(12,13,10,.32);border:1.5px solid rgba(232,220,196,.45);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
+body.touch .tb svg{pointer-events:none;opacity:.9}
+body.touch #bFire{right:calc(22px + env(safe-area-inset-right,0px));bottom:calc(34px + env(safe-area-inset-bottom,0px));width:86px;height:86px}
+body.touch #bFire2{display:flex;left:calc(22px + env(safe-area-inset-left,0px));top:32%;width:62px;height:62px;right:auto;bottom:auto}
+#bFire2{display:none}
+body.touch #bAds{right:calc(122px + env(safe-area-inset-right,0px));bottom:calc(58px + env(safe-area-inset-bottom,0px));width:60px;height:60px}
+body.touch #bReload{right:calc(34px + env(safe-area-inset-right,0px));bottom:calc(134px + env(safe-area-inset-bottom,0px));width:50px;height:50px}
+body.touch #bCrouch{right:calc(190px + env(safe-area-inset-right,0px));bottom:calc(26px + env(safe-area-inset-bottom,0px));width:50px;height:50px}
+body.touch #bUse{bottom:calc(96px + env(safe-area-inset-bottom,0px));height:46px;font-size:15px;background:rgba(242,184,75,.55);color:#1a1408;border-color:var(--amber)}
+#stickHome{display:none}
+body.touch #stickHome{display:block;position:absolute;left:calc(70px + env(safe-area-inset-left,0px));bottom:calc(40px + env(safe-area-inset-bottom,0px));width:110px;height:110px;border-radius:50%;border:1.5px dashed rgba(232,220,196,.22);pointer-events:none}
+body.touch #stick.on~#stickHome{opacity:0}
+body.touch #stick{width:120px;height:120px;margin:-60px 0 0 -60px;border-color:rgba(232,220,196,.4)}
+body.touch #obj{top:calc(8px + env(safe-area-inset-top,0px));right:calc(12px + env(safe-area-inset-right,0px));max-width:38vw;padding:2px 10px 2px 0}
+body.touch #obj b{font-size:14px}body.touch #obj span{font-size:11px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+body.touch #stagebox{top:auto;bottom:calc(6px + env(safe-area-inset-bottom,0px));right:auto;left:50%;transform:translateX(-50%);font-size:10px;opacity:.7}
+body.touch #clockbox{top:calc(8px + env(safe-area-inset-top,0px));left:calc(76px + env(safe-area-inset-left,0px))}
+body.touch #clock{font-size:13px}body.touch #fps{display:none}
+body.touch #bpause{top:calc(8px + env(safe-area-inset-top,0px));left:calc(12px + env(safe-area-inset-left,0px));padding:5px 10px;font-size:12px}
+body.touch #ammobox{top:auto;left:auto;right:calc(96px + env(safe-area-inset-right,0px));bottom:calc(146px + env(safe-area-inset-bottom,0px));gap:0}
+body.touch #ammo{font-size:24px}body.touch #res{font-size:12px}body.touch .wname{display:none}
+body.touch #hp{top:calc(34px + env(safe-area-inset-top,0px));left:calc(12px + env(safe-area-inset-left,0px));right:auto;width:110px;height:4px}
+body.touch #hp::before{display:none}
+body.touch #sub{top:calc(8px + env(safe-area-inset-top,0px));bottom:auto;max-width:44vw;padding:5px 10px}
+body.touch #subtxt{font-size:13px;line-height:1.35}body.touch #subwho{font-size:10px}
+body.touch #hint{top:auto;bottom:calc(150px + env(safe-area-inset-bottom,0px));font-size:12px;padding:5px 10px;max-width:46vw}
+body.touch #timerbox{top:calc(56px + env(safe-area-inset-top,0px));padding:3px 10px}body.touch #timerv{font-size:18px}
+body.touch #toast{top:24%;font-size:13px}
+body.touch #prompt{top:calc(50% + 46px)}
+body.touch .wp .lbl{font-size:11px;top:-30px}
+body.touch .tag{font-size:10px}
+@media (max-height:420px){body.touch #menu .title{font-size:44px}body.touch #menu .lede{font-size:13px}body.touch .settings{gap:6px 10px;padding-top:8px}body.touch #menu .col{gap:10px}
+  body.touch #briefing{padding:10px;gap:10px}body.touch #brieflines{font-size:13px}body.touch .howto{font-size:12px}body.touch #briefing h2{font-size:22px!important}}
+
+/* missions */
+.missions{display:flex;gap:8px;flex-wrap:wrap;font-size:13px}
+.missions a,.missions span{border:1px solid var(--line);border-radius:4px;padding:6px 10px;text-decoration:none}
+.missions a{color:var(--amber);border-color:rgba(242,184,75,.5)}
+.missions .cur{color:#15130e;background:var(--ink);border-color:var(--ink);font-weight:700}
+/* memorial */
+#memorial{background:radial-gradient(90% 80% at 50% 45%,#16140f 0,#050504 70%);z-index:31}
+#memorial .mem{display:flex;gap:min(48px,5vw);align-items:center;max-width:980px;width:100%;opacity:0;transform:translateY(8px);transition:opacity 2.2s ease,transform 2.2s ease}
+#memorial.on .mem{opacity:1;transform:none}
+.memphoto{position:relative;flex:0 0 auto;width:min(320px,34vw,58vh);aspect-ratio:9/10;border:1px solid rgba(232,220,196,.25);background:#0d0c0a;box-shadow:0 20px 60px rgba(0,0,0,.6);overflow:hidden}
+.memphoto img{width:100%;height:100%;object-fit:cover;display:block;filter:grayscale(.15) contrast(1.02)}
+.memphoto .ph{position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:10px;color:var(--dim);font-size:13px;text-align:center;padding:16px}
+.memphoto.noimg img{display:none}.memphoto.noimg .ph{display:flex}
+.memphoto::after{content:"";position:absolute;right:-26px;top:14px;width:120px;height:22px;background:#111;transform:rotate(45deg);transform-origin:center}
+.memtext{display:grid;gap:12px;min-width:0}
+.memtext h2{margin:0;font-size:min(44px,6vw,8vh);font-weight:900;line-height:1.05}
+.memtext p{margin:0;font-size:min(18px,2.6vh,3.6vw);line-height:1.65;color:#d8ccb4;max-width:46ch}
+.memtext .yhi{font-size:min(22px,3vh);font-weight:700;color:var(--ink);margin-top:6px}
+.flame{display:inline-block;width:14px;height:26px;margin-left:10px;vertical-align:-4px;border-radius:50% 50% 45% 45%/60% 60% 40% 40%;background:radial-gradient(ellipse at 50% 70%,#fff6d0 0,#ffc24a 45%,rgba(255,120,20,.0) 75%);animation:flick 2.4s infinite ease-in-out;filter:blur(.3px);box-shadow:0 0 18px 6px rgba(255,170,60,.25)}
+@keyframes flick{0%,100%{transform:scale(1,1) rotate(-1deg)}30%{transform:scale(.94,1.06) rotate(1.5deg)}60%{transform:scale(1.04,.95) rotate(-.5deg)}}
+@media (max-width:700px),(max-height:480px){#memorial .mem{gap:18px}.memtext p{max-width:none}}
+@media (prefers-reduced-motion:reduce){.flame{animation:none}#memorial .mem{transition:none}}
+
+#squad{position:absolute;right:22px;bottom:calc(46px + env(safe-area-inset-bottom,0px));display:grid;gap:3px;min-width:150px;font-size:11px;text-shadow:0 1px 2px #000}
+#squad .r{display:grid;grid-template-columns:1fr 56px;gap:8px;align-items:center;color:var(--ink)}#squad .r.h{color:var(--green)}#squad .r.dn{color:#ff6a55;font-weight:700}#squad .r.kia{color:var(--dim);text-decoration:line-through}
+#squad .b{height:4px;background:rgba(0,0,0,.45)}#squad .b i{display:block;height:100%;transform-origin:right}
+body.touch #squad{right:auto;bottom:auto;left:calc(12px + env(safe-area-inset-left,0px));top:calc(44px + env(safe-area-inset-top,0px));min-width:118px;font-size:9.5px;gap:1px}
+body.touch #squad .r{grid-template-columns:1fr 38px;gap:5px}
+
+@media (prefers-reduced-motion:reduce){#obj.pulse,#brieflines li{animation:none}}
+</style>
+</head><body>
+
+<canvas id="c"></canvas>
+
+<div id="loading" class="screen">
+  <div class="box">
+    <div class="eyebrow">8.6.2024 · 11:00 · נוסייראת</div>
+    <h1 class="title">מבצע ארנון</h1>
+    <div class="bar"><i id="loadbar"></i></div>
+    <div class="row" style="justify-content:space-between"><span class="small" id="loadtxt">טוען…</span><span class="small mono" id="loadpct">0%</span></div>
+    <p class="small">משחק יריות בגוף ראשון המבוסס על מבצע החילוץ בנוסייראת. שמות החטופים והלוחמים בדויים, והפרטים המבצעיים מפושטים.</p>
+  </div>
+</div>
+
+<div id="menu" class="screen" hidden>
+  <div class="col">
+    <div class="missions"><span class="cur">משימה 1 · מבצע ארנון</span><a href="fence.html">משימה 2 · הגדר ›</a></div>
+    <div class="eyebrow">8 ביוני 2024 · 11:00 · מחנה נוסייראת, מרכז הרצועה</div>
+    <h1 class="title">מבצע ארנון</h1>
+    <p class="lede">שני בניינים, מאתיים מטר ביניהם, באמצע שוק הומה אדם באור יום. ארבעה חטופים. יש לכם דקות ספורות.</p>
+    <div class="row"><button class="btn" id="bstart">לתדריך</button><button class="btn ghost" id="bhist">רקע היסטורי</button></div>
+    <div class="settings">
+      <span>גרפיקה</span><div class="seg" role="group" aria-label="איכות"><button data-q="0">נמוכה</button><button data-q="1">בינונית</button><button data-q="2">גבוהה</button></div>
+      <label for="sens">רגישות כיוון</label><input id="sens" type="range" min=".4" max="2.2" step=".05" value="1">
+      <span>שמע</span><div class="row"><label><input type="checkbox" id="voice" checked> קריינות</label><label><input type="checkbox" id="subs" checked> כתוביות</label></div>
+      <span class="touch-only">טלפון</span><div class="row touch-only"><label><input type="checkbox" id="autofire" checked> ירי אוטומטי כשמכוונים על חמוש</label><label><input type="checkbox" id="gyro"> כיוון בהטיית הטלפון</label></div>
+    </div>
+    <div class="keys" id="keyhelp"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> תנועה</span><span>עכבר שמאלי ירי · ימני כוונת</span><span><kbd>R</kbd> טעינה</span><span><kbd>B</kbd> בודד/אוטומטי</span><span><kbd>C</kbd> כריעה</span><span><kbd>Shift</kbd> ריצה</span><span><kbd>E</kbd> פעולה</span><span><kbd>Esc</kbd> השהיה</span></div>
+    <p class="small">מבוסס על פרסומים פומביים. שמות החטופים והלוחמים בדויים. הדמויות לא עוצבו בדמות אנשים אמיתיים. <span id="build"></span></p>
+  </div>
+</div>
+
+<div id="briefing" class="screen" hidden>
+  <div class="mapwrap"><canvas id="map"></canvas></div>
+  <div class="side">
+    <div class="eyebrow">תדריך · צוות בראבו</div>
+    <h2 style="margin:0;font-size:30px;font-weight:900">יעד "ספיר"</h2>
+    <ul id="brieflines"></ul>
+    <div class="howto"><b>מה תעשה במשימה</b><ol><li>תגיע בטנדר מוסווה לבניין "ספיר".</li><li>תעלה לקומה השלישית ותצמיד מטען לדלת.</li><li>תטהר את הדירה: 3 חמושים, ומשפחה שאסור לפגוע בה.</li><li>תוביל את שלושת החטופים לטנדר.</li><li>תגן עליהם כשהרכב נתקע, עד שהנגמ״שים יגיעו.</li><li>תביא אותם למסוק בחוף.</li></ol>
+    <span>היהלום הכתום על המסך מראה לאן ללכת. כשמופיע עיגול מהבהב, מחזיקים <kbd>E</kbd> (בטלפון: "פעולה").</span></div>
+    <div class="row"><button class="btn" id="bgo">יציאה לדרך</button><button class="btn ghost" id="bskip">דלג על התדריך</button></div>
+  </div>
+</div>
+
+<div id="hud" hidden>
+  <div id="obj"></div>
+  <div id="stagebox"><span id="stagen"></span><ol id="stages"></ol></div>
+  <div class="wp" id="wp" hidden><div class="dia"></div><span class="lbl" id="wplbl"></span><span class="dist" id="wpdist"></span></div>
+  <div id="wparrow" hidden></div>
+  <div id="tags"></div>
+  <div id="hint"></div>
+  <div id="clockbox"><span id="clock" class="mono">10:58:25</span><span id="fps" class="mono"></span></div>
+  <div id="timerbox" hidden><span id="timerl"></span><span id="timerv" class="mono">1:30</span></div>
+  <div id="ammobox"><span class="wname mono">M4A1</span><span><span id="ammo" class="mono">30</span> <span id="res" class="mono">180</span></span></div>
+  <div id="hp"><div id="hpv"></div></div>
+  <div id="squad" aria-label="מצב הכוח"></div>
+  <div id="cross"><i></i><i></i><i></i><i></i><i></i></div>
+  <div id="hitm"></div>
+  <div id="vign"></div><div id="blood"></div><div id="ammowarn"></div>
+  <div id="dmgarcs"></div>
+  <div id="sub"><span id="subwho"></span><span id="subtxt"></span></div>
+  <div id="prompt"><span id="prompttxt"></span><div class="pb"><div id="promptbar"></div></div></div>
+  <div id="toast"></div>
+  <button id="bpause">השהיה</button>
+</div>
+<div id="touch" hidden>
+  <div id="lookzone"></div>
+  <div id="stick"><div id="knob"></div></div>
+  <div class="tb" id="bFire" aria-label="ירי"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="7"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></svg></div><div class="tb" id="bFire2" aria-label="ירי"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="7"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></svg></div><div class="tb" id="bAds" aria-label="כוונת"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="7" width="18" height="10" rx="3"/><circle cx="12" cy="12" r="2.2" fill="currentColor"/></svg></div><div class="tb" id="bReload" aria-label="טעינה"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></svg></div><div class="tb" id="bCrouch" aria-label="כריעה"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13" cy="5" r="2"/><path d="M12 8l-2 5h5l2 6M10 13l-4 3 1 3"/></svg></div><div class="tb" id="bUse" hidden>פעולה</div>
+  <div id="stickHome"></div>
+</div>
+<div id="flash"></div><div id="fade"></div>
+
+<div id="pause" class="ov" hidden><div class="card"><h2>השהיה</h2><div class="row"><button class="btn" id="bresume">המשך</button><button class="btn ghost" id="brestart">מנקודת הביקורת</button><button class="btn ghost" id="bquit">לתפריט</button></div>
+  <div class="settings"><span>גרפיקה</span><div class="seg"><button data-q="0">נמוכה</button><button data-q="1">בינונית</button><button data-q="2">גבוהה</button></div></div><p class="small" id="diag"></p></div></div>
+<div id="fail" class="ov" hidden><div class="card"><div class="eyebrow">המשימה נכשלה</div><h2 id="failtxt"></h2><div class="row"><button class="btn" id="bretry">נסה שוב מנקודת הביקורת</button></div></div></div>
+<div id="hist" class="ov" hidden><div class="card">
+  <div class="eyebrow">רקע היסטורי</div><h2>מבצע ארנון, 8 ביוני 2024</h2>
+  <p>בשבת בבוקר, בשעה 11:00, פשטו לוחמי ימ״מ ושב״כ בסיוע צה״ל על שני בניינים במחנה נוסייראת, במרחק של כמאתיים מטר זה מזה. בבניין אחד הוחזקה חטופה אחת, ובשני שלושה חטופים, בדירות של משפחות.</p>
+  <p>הפשיטה על שני הבניינים נעשתה בו־זמנית. החילוץ מהבניין הראשון עבר בשקט יחסי. בבניין השני פרץ קרב, ומפקד הצוות, פקד ארנון זמורה, נפצע אנושות. רכב החילוץ נתקע תחת אש, כוחות תגבור הגיעו אליו, והחטופים פונו במסוקים מנקודת נחיתה בחוף. ארבעת החטופים חזרו בחיים.</p>
+  <p>המבצע נקרא על שמו של ארנון זמורה, שמת מפצעיו. לפי משרד הבריאות בעזה נהרגו במהלך המבצע 274 פלסטינים; צה״ל העריך שמספר ההרוגים נמוך ממאה. המספרים שנויים במחלוקת.</p>
+  <p class="small">המשחק מפשט את האירועים. כל הדיאלוגים, שמות הקוד וסדר הפעולות במשחק הם המחשה ולא תיעוד.</p>
+  <div class="row"><button class="btn ghost" id="bhistclose">סגור</button></div></div></div>
+<div id="memorial" class="ov" hidden><div class="mem">
+  <div class="memphoto" id="memphoto"><img id="memimg" alt="פקד ארנון זמורה ז״ל" onerror="this.parentNode.classList.add('noimg')"><div class="ph"><span class="flame" style="margin:0 0 6px"></span><b style="color:var(--ink);font-size:16px">ארנון זמורה ז״ל</b></div></div>
+  <div class="memtext">
+    <div class="eyebrow">לזכרו</div>
+    <h2>פקד ארנון זמורה ז״ל <span class="flame" aria-hidden="true"></span></h2>
+    <p>לוחם ומפקד צוות ביחידה המשטרתית המיוחדת (ימ״מ). נפצע אנושות בחילוץ החטופים בנוסייראת, בשבת 8 ביוני 2024, ומת מפצעיו.</p>
+    <p>המבצע שבו חזרו ארבעה חטופים בחיים נקרא על שמו: מבצע ארנון.</p>
+    <p class="yhi">יהי זכרו ברוך.</p>
+    <div class="row"><button class="btn ghost" id="bmem">המשך</button></div>
+  </div></div></div>
+<div id="end" class="ov" hidden><div class="card">
+  <div class="eyebrow">11:48 · חוף מרכז הרצועה</div>
+  <h2 style="font-size:40px">ארבעה חטופים בידינו.</h2>
+  <p>ארבעת החטופים שהוחזקו בנוסייראת חזרו לישראל בחיים.</p>
+  <p class="dedic">פקד ארנון זמורה ז״ל, מפקד צוות בימ״מ, נפצע אנושות במבצע ומת מפצעיו. המבצע נקרא על שמו.</p>
+  <div class="stats"><div><b id="st-time">—</b><span>זמן משימה</span></div><div><b id="st-acc">—</b><span>דיוק</span></div><div><b id="st-kills">—</b><span>חמושים שנוטרלו</span></div><div><b id="st-civ">—</b><span>פגיעה בבלתי־מעורבים</span></div></div>
+  <p class="small">לפי משרד הבריאות בעזה נהרגו במבצע 274 פלסטינים; צה״ל העריך פחות ממאה. שמות החטופים והלוחמים במשחק בדויים.</p>
+  <ul class="credits small"><li>דמויות: <bdi>Microsoft Rocketbox (MIT)</bdi></li><li>רובה M4A1: <bdi>nisu, OpenGameArt (CC0)</bdi></li><li>זרועות: <bdi>kursat_sokmen (CC BY 4.0)</bdi></li><li>מסוק UH-60 וצלילי רוטור: <bdi>FlightGear (GPL-2.0)</bdi></li><li>רכבים ואביזרים: <bdi>Gazebo models (CC BY 3.0)</bdi></li><li>טקסטורות: <bdi>Babylon.js Assets (CC BY 4.0), Poly Haven (CC0)</bdi></li><li>הקלטות ירי אמיתיות: <bdi>Free Firearm Sound Library (CC0)</bdi></li><li>צלילים: <bdi>Red Eclipse (CC BY-SA), 0 A.D. / Wildfire Games (CC BY-SA), ESC-50 (CC BY), OpenClonk (CC BY), OpenRCT2 (CC BY), Warfork (CC0), Kenney (CC0), VoxeLibre</bdi></li><li>טקסטורות בטון ובלוקים: <bdi>Nobiax / Yughues (CC0), 0 A.D. (CC BY-SA)</bdi></li><li>שמיים וטקסטורות צילום: <bdi>Poly Haven, ambientCG (CC0)</bdi></li><li>דיבוב (סינתזה נוירונית מקומית): <bdi>BlueTTS, Max Melichov (MIT)</bdi></li><li>ריהוט הדירה: <bdi>AWS RoboMaker Residential models (MIT-0)</bdi></li></ul>
+  <div class="row"><button class="btn" id="bagain">שחק שוב</button><a class="btn ghost" href="fence.html" style="text-decoration:none">למשימה 2: הגדר</a></div></div></div>
+<div id="err" hidden></div>
+<div id="rotate"><svg viewBox="0 0 24 24" width="56" height="56" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M3 9a9 9 0 0 1 4-5M21 15a9 9 0 0 1-4 5"/></svg><b>סובב את הטלפון לרוחב</b><span>המשחק בנוי למסך רוחבי</span></div>
+
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/","three-mesh-bvh":"https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.8.3/build/index.module.js"}}
+</script>
+<script type="module" src="js/main.js"></script>
+</body></html>

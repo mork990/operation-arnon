@@ -1,0 +1,43 @@
+# Asset provenance
+
+- Source M4A1 model: **M4A1 Assault Rifle** by **nisu / 3DModelsCC0**, **CC0 1.0**.
+  - Model page: https://opengameart.org/content/m4a1-assault-rifle
+  - Creator profile: https://opengameart.org/users/nisu (identifies the original 3DModelsCC0 library as the creator's project).
+  - License: https://creativecommons.org/publicdomain/zero/1.0/
+  - Original archive: https://opengameart.org/sites/default/files/m4a1_0.zip
+  - Retrieved September 4, 2026. OpenGameArt labels the work CC0; the original domain was unavailable and the archive has no separate license text.
+  - Original ZIP SHA256: ED5779EC82718861964227E2AAD2A900978EA087081154365D6D86246BE62F0D
+  - Retained original-conversion GLB SHA256: 8BA099EE6120E35E5D5C427A7BBE32B10A80B7484C42D650C785947A2A83A19D
+  - Converted FBX to GLB; retained 13 named meshes, original geometry and UVs; normalized display scale. Supplied base color and normal images embedded, metallic and roughness packed into standard blue/green channels. Embedded image rows flipped for glTF. The supplied height image is not used for displacement. Original normal-map channel convention is undocumented.
+  - The viewer rotates the asset for the stage and makes static meshes siblings while retaining world transforms, so each visibility control operates independently. Original GLB hierarchy remains intact on disk.
+  - This is moderate-detail exterior game art, not a verified 1:1 model or a licensed Colt/Tarkov asset.
+- Current Blender refinement: public/assets/m4a1/m4a1-blender-v2.glb.
+  - SHA256: 65D729E25AF597BE3C13C6C5F5778B539F5816518C360731FB260D8867939FF8
+  - Blender 4.5.9 LTS: separated handguard, pistol grip, front sight and muzzle exterior from complete source geometry. Removed 22 degenerate/coincident magazine triangles. Applied artistic bevel and weighted-normal refinement to stock, grip, magazine and muzzle. 17 exterior groups, 15,607 evaluated triangles.
+  - Original 2K PBR images preserved pixel for pixel. Normal texture strength adjusted to 0.35; original normal channel convention remains undocumented. No displacement or invented internals. Many fastener marks remain texture detail.
+  - Editable Blender master includes packed PBR images and the credited studio HDR; modifier stacks remain editable. Preview images are Blender renders.
+  - Viewer coating shaders are original cosmetic effects; separated-layout offsets are arbitrary presentation spacing, not physical assembly paths or operating motion.
+- Concept studies: original procedural display geometry created for this project. Arbitrary scene units, exterior only. It is not an official Colt model, a Tarkov asset, or mechanically verified geometry.
+- Concept-mode variants and finishes: original concepts. Their labels do not identify commercial parts.
+- Accessory library, September 5, 2026: original approximate exterior Blender artwork, distinct from manufacturer CAD and Tarkov assets. Product names identify the subjects depicted, without asserting manufacturer approval or verified real-world fit.
+  - EOTECH HHS VIII TAN (EXPS3-0 + G33): https://www.eotechinc.com/products/eotech-hhs-viii-tan . Modeled from the user's supplied photographs; small details remain interpreted. 67,660 triangles, 32 glTF meshes / 40 material primitives, 10 materials, two original embedded 512px finish images. hhs-viii.glb SHA256: 410edd95ac7651b369e4e6795a1e26c9e8cbde38e8ddc82ee97b105ba815ce35.
+  - Magpul CTR Carbine Stock – Mil-Spec: https://magpul.com/ctr-carbine-stock-mil-spec.html
+  - Magpul MOE-K2 Grip – AR15/M4: https://magpul.com/moe-k2-grip-ar15-m4.html
+  - Magpul PMAG 30 AR/M4 GEN M3: https://magpul.com/pmag-30-ar-m4-gen-m3.html
+  - Magpul RVG – Rail Vertical Grip: https://magpul.com/rvg-rail-vertical-grip.html
+  - Daniel Defense M4A1 RIS II FDE: https://danieldefense.com/m4a1-risii-fde.html
+  - SureFire Warden, Fast-Attach exterior: https://www.surefire.com/warden/
+  - SureFire M600U Scout Light: https://www.surefire.com/m600u-scout-light-weaponlight/
+  - Seven-accessory bundle: 323 named meshes, 76,960 triangles, original embedded grain normal map. Official names and text cues checked; direct official gallery pixels were unavailable, so exact image matching is not claimed.
+  - The combined Blender master retains 355 new accessory meshes and the original 17 source groups, with all seven images/HDR packed. Four minor cosmetic overlap pairs at the sight mount and handguard rail seating boundary remain; no optic housing/lens/magnifier/light conflict was detected in the reviewed assembled and flipped artwork.
+  - G33 flipping changes the exterior pose only. It does not implement calibrated magnification, internal operation or an assembly procedure. Lenses, emissive details and markings are protected from cosmetic finish and hover shaders.
+- Studio environment: **Brown Photostudio 02**, by **Sergej Majboroda**, via Poly Haven, **CC0**.
+  - Source: https://polyhaven.com/a/brown_photostudio_02
+  - License: https://polyhaven.com/license
+  - File: https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/brown_photostudio_02_2k.hdr
+  - Original file MD5: 15f9d0a5bde4a67e0b7d266f07bc166c
+  - No attribution or licensing is asserted for the user's reference screenshot. It is not included in the delivered application.
+
+The project is independent of Colt and Battlestate Games.
+- Surface detail texture and runtime material shaders: original project work, September 5, 2026. Numeric data generated with a fixed seed; no downloaded material textures or baked lighting. Rendering sources and limits: docs/material-rendering.md.
+- All-part material pass: explicit sourced/inferred recipes cover 380 current rendered material slots; an original approximate angular grip-height pattern extends the numeric detail texture. Manufacturer evidence and unknowns are documented in docs/part-materials.md. Shader values are artistic approximations; no new manufacturer CAD or textures were imported.
