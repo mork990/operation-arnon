@@ -121,7 +121,7 @@ const FSV = 'void main(){ gl_Position = vec4(position.xy, 0., 1.); }';
  * Bake one probe volume. occ: BufferGeometry (world space) of everything that blocks light, without the ground.
  * v: { slot:'a'|'b', min:Vector3, max:Vector3, cell:number|Vector3, dirs, res, bounce, strength }
  */
-export function bakeVolume(renderer, occ, v) {
+export async function bakeVolume(renderer, occ, v) {
   const c = typeof v.cell === 'number' ? new THREE.Vector3(v.cell, v.cell, v.cell) : v.cell.clone();
   const size = v.max.clone().sub(v.min); const n = new THREE.Vector3(Math.max(1, Math.round(size.x / c.x)), Math.max(1, Math.round(size.y / c.y)), Math.max(1, Math.round(size.z / c.z)));
   c.set(size.x / n.x, size.y / n.y, size.z / n.z);
@@ -149,8 +149,11 @@ export function bakeVolume(renderer, occ, v) {
   renderer.setRenderTarget(acc); renderer.setClearColor(0x000000, 0); renderer.clear(true, false, false);
   const ctr = v.min.clone().add(v.max).multiplyScalar(.5); const R = v.reach || 400;
   const corners = []; for (let i = 0; i < 8; i++) corners.push(new THREE.Vector3(i & 1 ? v.min.x : v.max.x, i & 2 ? v.min.y : v.max.y, i & 4 ? v.min.z : v.max.z));
-  const dirs = fib(v.dirs || 64); const wgt = 1 / dirs.length;
+  const dirs = fib(v.dirs || 64); const wgt = 1 / dirs.length; let k = 0;
+  // a few directions per task: one burst of every depth pass over the whole town can run past a phone GPU's watchdog,
+  // which loses the context and leaves the loading screen frozen
   for (const d of dirs) {
+    if (++k % 4 === 0) await new Promise(r => setTimeout(r, 0));
     cam.position.copy(ctr).addScaledVector(d, R); cam.up.set(0, 1, 0); if (Math.abs(d.y) > .98) cam.up.set(1, 0, 0); cam.lookAt(ctr); cam.updateMatrixWorld(true);
     const inv = cam.matrixWorldInverse; let ext = 0; for (const p of corners) { const q = p.clone().applyMatrix4(inv); ext = Math.max(ext, Math.abs(q.x), Math.abs(q.y)); }
     ext += 1; cam.left = -ext; cam.right = ext; cam.top = ext; cam.bottom = -ext; cam.near = .1; cam.far = R * 2; cam.updateProjectionMatrix();

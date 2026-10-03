@@ -37,7 +37,7 @@ import { UpscalePass, DynRes } from '../resolution.js';
 
 const $ = id => document.getElementById(id);
 // build number in the menu and the pause card: tells a play-tester which version (and not a cached older script) is running
-const BUILD = 21; $('build').textContent = '· גרסה ' + BUILD;
+const BUILD = 22; $('build').textContent = '· גרסה ' + BUILD;
 const canvas = $('c');
 function err(msg) { const e = $('err'); e.hidden = false; e.textContent = msg; }
 addEventListener('error', e => { if (e.message) err('שגיאה בטעינת המשחק: ' + e.message); });
@@ -55,6 +55,8 @@ G.wind = V3(2.4, 0, .5); // afternoon sea breeze from the west: smoke and gas dr
 
 // ---------- renderer & scene ----------
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false });
+// a lost GPU context (memory or a driver watchdog on phones) otherwise just freezes the frame: say so and offer a reload
+canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); err('הגרפיקה של הדפדפן קרסה (בדרך כלל חוסר זיכרון). סגור לשוניות אחרות ורענן את הדף, או בחר איכות נמוכה.'); });
 // phones: bigger images are resampled at upload (three.js does it against capabilities.maxTextureSize; the shadow map read
 // its limit at construction). A 1024 px texture with mips is 5.3 MB, and on an iPhone it counts against the tab's ceiling
 if (G.isTouch) renderer.capabilities.maxTextureSize = Math.min(renderer.capabilities.maxTextureSize, G.lowMem ? 512 : 1024);
@@ -204,7 +206,7 @@ void main(){ vec3 d = normalize(vDir); float a = atan(d.z, d.x) + uRot; vec2 uv 
   // ambient light visibility over the incident area (the wall, the berm, the road and the crowd's ground), see gi.js
   $('loadtxt').textContent = 'מחשב תאורה…'; await new Promise(r => setTimeout(r, 30));
   const giT0 = performance.now();
-  bakeVolume(renderer, occ, { slot: 'a', min: new THREE.Vector3(-230, 0, -160), max: new THREE.Vector3(60, 14, 160), cell: 2, dirs: 64, res: G.lowMem ? 1024 : G.isTouch ? 1536 : 2048, reach: 900, bounce: .45, strength: .8 });
+  await bakeVolume(renderer, occ, { slot: 'a', min: new THREE.Vector3(-230, 0, -160), max: new THREE.Vector3(60, 14, 160), cell: 2, dirs: G.isTouch ? 40 : 64, res: G.lowMem ? 1024 : G.isTouch ? 1536 : 2048, reach: 900, bounce: .45, strength: .8 });
   bakeSunShadow(renderer, occ, { min: new THREE.Vector3(-420, 0, -300), max: new THREE.Vector3(140, 24, 300), sunDir: G.sunDir, res: G.lowMem ? 1024 : 2048, near: 54 });
   occ.dispose(); G.giBakeMs = Math.round(performance.now() - giT0);
   G.fx = new FX(); G.player = new Player(); G.weapon = new Weapon(); G.ui = new UI(); G.guide = new Guide(FSTAGES);
