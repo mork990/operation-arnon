@@ -37,7 +37,7 @@ import { UpscalePass, DynRes } from '../resolution.js';
 
 const $ = id => document.getElementById(id);
 // build number in the menu and the pause card: tells a play-tester which version (and not a cached older script) is running
-const BUILD = 24; $('build').textContent = '· גרסה ' + BUILD;
+const BUILD = 25; $('build').textContent = '· גרסה ' + BUILD;
 const canvas = $('c');
 function err(msg) { const e = $('err'); e.hidden = false; e.textContent = msg; }
 addEventListener('error', e => { if (e.message) err('שגיאה בטעינת המשחק: ' + e.message); });

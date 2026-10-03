@@ -5,9 +5,10 @@
 import * as THREE from 'three';
 import { G, rr, R, pick, clamp, V3, bus, after, fmtClock, sstep } from '../core.js';
 import { Actor } from '../actors.js';
-import { CL, hC, makeCart, civCar } from './world.js';
+import { CL, hC, makeCart, makeChair, civCar, rubbleBlock } from './world.js';
+import { OPS, SPK } from './ops.js';
 
-export const CSTAGES = ['פתיחת המסדרון', 'זרם גדל במחסום', 'התראה: חוליה חמושה בטור', 'ירי מבניין ממערב', 'רכב נגד הזרם', 'סגירת המסדרון'];
+export const CSTAGES = ['פתיחת המסדרון', 'זרם גדל במחסום', 'התראה: חוליה חמושה בטור', 'שיירת פינוי · נ״ט ממערב', 'ירי מבניין ממערב', 'צבע אדום · מרגמות', 'רכב נגד הזרם', 'סגירת המסדרון'];
 const $ = id => document.getElementById(id);
 const HQ = 'אוגדה · חמ״ל', DEP = 'הסגן · בחפ״ק', SHB = 'שב״כ', OBS = 'תצפיתנית · חמ״ל', CPK = 'מחסום "אלון"', MED = 'צוות רפואה', ARM = 'שריון', UAV = 'כטב״ם', AIR = 'חיל האוויר';
 const COL = { [HQ]: '#9ac0e6', [DEP]: '#e8dcc4', [SHB]: '#f28a6b', [OBS]: '#c9a6e6', [CPK]: '#9ac0e6', [MED]: '#9ac0e6', [ARM]: '#9ac0e6', [UAV]: '#9ac0e6', [AIR]: '#9ac0e6' };
@@ -29,7 +30,7 @@ function bundle(a) { const g = new THREE.Mesh(new THREE.BoxGeometry(.36, .26, .2
 export class CorridorMission {
   constructor() {
     this.t = 0; this.stage = -1; this.events = []; this.intel = []; this.units = []; this.press = 0; this.crushT = 0;
-    this.st = { civHurt: 0, civHurtUnjust: 0, idfHurt: 0, militants: 0, wrongDetain: 0, detained: 0, stranded: 0, passed: 0, prevented: [], violations: [], notes: [] };
+    this.st = { civHurt: 0, civHurtUnjust: 0, idfHurt: 0, militants: 0, wrongDetain: 0, detained: 0, stranded: 0, passed: 0, prevented: [], violations: [], notes: [], ev: {} };
     this.suspects = []; this.movers = []; this.hurt = [];
     bus.on('actorHit', a => { if (a.friendly && !a._counted) { a._counted = true; this.st.idfHurt++; } });
   }
@@ -51,8 +52,9 @@ export class CorridorMission {
       'השעה 10:00. המסדרון על כביש צלאח א־דין נפתח עכשיו, עד השעה 14:00.',
       'אלפי אזרחים, משפחות, קשישים, עגלות ומעט רכבים עם דגלים לבנים, נעים דרומה דרך המחסום.',
       'המחסום: שני נתיבי מעבר ונתיב לרכבים. נתיב 2 סגור כרגע. ליד המחסום צוות רפואה, כריזה ושני נגמ״שים. מרכבה מאבטחת את האגף.',
+      'בפיקודך גם צוות חי״ר, הנדסה עם רובוט, דחפור D9, משטרה צבאית ומרגמות עשן. שיירת אמבולנסים מתואמת צפויה לעבור בנתיב הרכבים.',
       'המודיעין מעריך שחמאס ינסה להבריח חמושים בתוך הטור, ואולי לירות על הכוח.',
-      'יש לך רחפן תצפית, כטב״ם חמוש, שריון, וחיל האוויר דרך האוגדה. תקיפה ליד אזרחים אסורה.',
+      'יש לך רחפן תצפית, כטב״ם חמוש, מרכבה, מסוק קרב, וחיל האוויר דרך האוגדה. כל תקיפה עוברת כרטיס מידתיות ובדיקת יועמ״ש. אזרחים אינם יעד.',
       'המטרה: כולם עוברים בבטחה ובזמן, ואף חמוש לא עובר. בהצלחה.',
     ];
     const list = $('brieflines'); list.innerHTML = '';
@@ -70,7 +72,8 @@ export class CorridorMission {
     const go = () => { this.waiting = false; G.lock && G.lock(); after(1.5, () => this.radio(HQ, 'חפ״ק, כאן אוגדה. המסדרון פתוח עד 14:00. עדכן על כל שינוי בזרם.')); after(8, () => this.radio(DEP, 'המפקד, רחפן התצפית באוויר. הטאבלט אצלך.', false)); };
     if (location.hash === '#retry' || G.debug.noIntro) go(); else { this.waiting = true; G.command.intro(go); }
   }
-  radio(who, text, radio = true) { G.csound && G.csound.radio(who, text, COL[who] || '#e8dcc4', Math.max(4.5, text.length * .075), radio); }
+  // radio lines are spoken by sound.js in the call-sign's voice; the deputy beside the commander talks in person
+  radio(who, text, radio = true) { G.csound && G.csound.radio(who, text, COL[who] || (radio ? '#9ac0e6' : '#e8dcc4'), Math.max(4.5, text.length * .075), radio, radio ? null : 'team'); }
   onTabletFirst() { G.tablet.hint('גרור להזזת הרחפן · צביטה או +/− לזום · נגיעה באדם מסמנת אותו'); setTimeout(() => G.tablet.hint('בלשונית "כוחות" כל הפקודות, כולל שריון, כטב״ם וחיל האוויר'), 4200); }
   objective(t, sub) { this.obj = t; this.calm = { title: t, text: sub }; this.refreshTask(); }
   stageSet(i) { if (this.stage === i) return; this.stage = i; G.guide.setStage(i); }
@@ -100,6 +103,7 @@ export class CorridorMission {
       { id: 'uav', name: 'כטב״ם חמוש', sub: 'תקיפה מדויקת. רק בזיהוי ודאי ורחוק מאזרחים', cd: 0, shots: 2 },
       { id: 'air', name: 'חיל האוויר', sub: 'דרך האוגדה · אישור ובדיקות נזק אגבי, כדקה', busy: false },
     ];
+    this.units.push(...this.opsForces());
     this.U = Object.fromEntries(this.units.map(u => [u.id, u]));
   }
   // soldiers hold their post, face their sector, crouch when a sniper is firing and nobody covers them
@@ -115,12 +119,15 @@ export class CorridorMission {
     this.events = [];
     this.at(26, () => this.spawnOldMan());
     this.at(66, () => this.surge());
-    this.at(112, () => this.spawnCell());
-    this.at(268, () => this.sniperStart());
-    this.at(338, () => this.carStart());
-    this.at(392, () => this.closing());
-    // two cars with white flags and their families, at walking pace in the vehicle lane
-    this.at(10, () => this.flagCar('suv', '#d8d4c8', -150)); this.at(150, () => this.flagCar('hatch', '#8a8680', -200));
+    this.at(125, () => this.spawnCell());
+    this.at(128, () => this.blockFall());
+    this.at(305, () => this.sniperStart());
+    this.at(420, () => this.carStart());
+    this.at(520, () => this.closing());
+    // two cars with white flags and their families, at walking pace in the vehicle lane (both past the wall that
+    // falls into the lane at 128 s before it falls)
+    this.at(10, () => this.flagCar('suv', '#d8d4c8', -150)); this.at(96, () => this.flagCar('hatch', '#8a8680', -132));
+    this.opsTimeline();
   }
   spawnTick(dt) {
     const c = G.crowd; if (!c || this.closed) return;
@@ -128,7 +135,14 @@ export class CorridorMission {
     while (this.spawnAcc > 3) { this.spawnAcc -= 3; c.spawnGroup(CL.spawnZ);
       // now and then a hand cart or a donkey cart with the family's belongings (they use the vehicle lane)
       const last = c.agents[c.agents.length - 1], carts = c.agents.filter(a => a.alive && a.cart).length;
-      if (last && carts < (G.isTouch ? 4 : 7) && c.gr() < .14) { const dk = c.gr() < .35; last.cart = makeCart(c.gr, dk); last.donkey = dk; last.walk = Math.min(last.walk, 1); } }
+      if (last && carts < (G.isTouch ? 4 : 7) && c.gr() < .14) { const dk = c.gr() < .35; last.cart = makeCart(c.gr, dk); last.donkey = dk; last.walk = Math.min(last.walk, 1); }
+      // a wheelchair pushed with the family's bundles on it (it stays in the people's lanes: it fits between the barriers)
+      else if (last && !last.cart && c.gr() < .06 && c.agents.filter(a => a.alive && a.chair).length < (G.isTouch ? 2 : 4)) { last.chair = makeChair(c.gr); last.walk = Math.min(last.walk, .95); } }
+  }
+  // a damaged house's front wall comes down across the vehicle lane (the medical convoy later needs that lane)
+  blockFall() {
+    const p = V3(CL.vehX + .4, 0, -122); this.block = rubbleBlock(p.x, p.z); G.fx.dustBurst && G.fx.dustBurst(p.clone(), 6, 50); G.audio.explosion(p, .45);
+    this.addIntel(OBS, 'קיר של בית פגוע קרס אל נתיב הרכבים, 120 מ׳ צפונית למחסום. אף אחד לא נפגע, אבל רכבים לא יעברו שם.', false, { label: 'הראה ברחפן', fn: () => this.lookAt(p) });
   }
   // ---------- 1. the old man ----------
   spawnOldMan() {
@@ -211,7 +225,7 @@ export class CorridorMission {
   }
   // ---------- 4. the sniper ----------
   sniperStart() {
-    this.stageSet(3); this.firing = G.time; this.covered = false; this.sniperShots = 0; G.crowd.shelter = true; this.sniperNext = G.time + .4;
+    this.stageSet(4); this.firing = G.time; this.covered = false; this.sniperShots = 0; G.crowd.shelter = true; this.sniperNext = G.time + .4;
     this.addIntel(OBS, 'ירי! צלף בקומה הרביעית של בניין ממערב לכביש, 140 מטר צפונית־מערבית למחסום. בתרמי: משפחות מסתתרות בקומת הקרקע של אותו בניין.', true, { label: 'הראה ברחפן', fn: () => this.lookAt(G.sniperWin) });
     this.radio(CPK, 'ירי על המחסום! האנשים שוכבים. מאיפה זה בא?');
     this.setThreat('sniper'); G.audio.setIntensity(.7);
@@ -227,7 +241,7 @@ export class CorridorMission {
     after(.25, () => { G.fx.impact(hitP, V3(0, 1, 0), 'concrete'); G.audio.impact(hitP, 'concrete'); });
     const since = G.time - this.firing;
     // nobody covered the line of fire: after half a minute a soldier is hit, after a minute a civilian in the queue
-    if (since > 30 && !this._soldierHit) { this._soldierHit = true; after(.3, () => { tg.damage(55, w, 'legs'); this.notify('לוחם נפגע מירי הצלף', `${tg.name} נפצע ברגלו. קו האש עדיין פתוח: עשן ושריון חוסמים אותו.`, true); this.radio(CPK, 'נפגע אצלנו! צריך חובש ומסך עשן, עכשיו!'); this.casualty(tg); }); }
+    if (since > 30 && !this._soldierHit) { this._soldierHit = true; this.st.ev.sniper = 'bad'; after(.3, () => { tg.damage(55, w, 'legs'); this.notify('לוחם נפגע מירי הצלף', `${tg.name} נפצע ברגלו. קו האש עדיין פתוח: עשן ושריון חוסמים אותו.`, true); this.radio(CPK, 'נפגע אצלנו! צריך חובש ומסך עשן, עכשיו!'); this.casualty(tg); }); }
     if (since > 60 && !this._civHit) { this._civHit = true; const q = G.crowd.lanes[0].q; const ag = q[Math.min(q.length - 1, 5 + Math.floor(R() * 10))]; if (ag) { const c = this.civHurt(ag, 'אזרחית בתור נפגעה מירי הצלף'); if (c) this.notify('אזרחית נפגעה', 'כדור של הצלף פגע באישה בתור. היא חיה ומטופלת.', true); } }
   }
   // smoke from the APC's dischargers and the APC itself between the building and the checkpoint
@@ -235,9 +249,12 @@ export class CorridorMission {
     if (!this.firing || this.covered) { const u = this.U.apcA; if (u.pos !== 'cover') return this.moveArmour('apcA', 'cover'); return 'קו האש כבר חסום'; }
     const u = this.U.apcA; if (u.smoke <= 0) return 'נגמרו רימוני העשן'; u.smoke--; this.moveArmour('apcA', 'cover', true);
     this.smokeT = G.time; this.notify('מסך עשן', 'הנמ״ר יורה רימוני עשן ונכנס בין הבניין למחסום. בעוד כמה שניות הצלף לא יראה את המחסום.', false); this.radio(ARM, 'נמ״ר א׳, זז לחסום. עשן באוויר.');
-    after(6, () => { this.covered = true; G.crowd.shelter = false; this.setThreat('sniper', false); this.notify('קו האש חסום', 'העשן והנמ״ר מסתירים את המחסום. האנשים קמים וממשיכים. הצלף עלול לסגת.', false); this.radio(CPK, 'העשן עובד, הירי נפסק. ממשיכים להעביר אנשים.'); G.audio.setIntensity(.3);
-      after(22, () => this.sniperLeaves()); });
+    after(6, () => this.coveredBy('העשן והנמ״ר מסתירים את המחסום. האנשים קמים וממשיכים. הצלף עלול לסגת.'));
     return true;
+  }
+  coveredBy(msg) {
+    if (this.covered || !this.firing) return; this.covered = true; if (!this.mortarOn) G.crowd.shelter = false; this.setThreat('sniper', false); this.notify('קו האש חסום', msg, false); this.radio(CPK, 'העשן עובד, הירי נפסק. ממשיכים להעביר אנשים.'); G.audio.setIntensity(.3);
+    this.st.ev.sniper = this.st.ev.sniper || 'ok'; after(22, () => this.sniperLeaves());
   }
   sniperLeaves() {
     const s = this.sniper; if (!s || !s.alive) return; s.noSnap = false; s.pos.set(CL.sniper.x - 6, 0, CL.sniper.z + 2); s.aiming = false; s.readyAim = false; s.brain = () => {};
@@ -247,7 +264,7 @@ export class CorridorMission {
   }
   // ---------- 5. the car against the flow ----------
   carStart() {
-    this.stageSet(4); const car = civCar('hatch', '#c9c3b0'); if (!car) return; car.remove(car.children[1]); // no white flag on this one
+    this.stageSet(6); const car = civCar('hatch', '#c9c3b0'); if (!car) return; car.remove(car.children[1]); // no white flag on this one
     car.position.set(CL.vehX + 1, 0, 170); car.rotation.y = Math.PI; this.car = { o: car, v: 7.5, step: 0, stop: false, warned: 0 };
     (G.crowdObstacles || (G.crowdObstacles = [])).push(this.car.obst = { x: car.position.x, z: car.position.z, r: 3.2 });
     (G.hotObjects || (G.hotObjects = [])).push(car);
@@ -277,10 +294,10 @@ export class CorridorMission {
   civHurtDriver(why) { const c = this.car; c.hurt = true; this.st.civHurt++; this.st.civHurtUnjust++; this.st.violations.push(why); this.notify('הנהג נפצע', why + '.', true); }
   // ---------- 6. closing ----------
   closing() {
-    this.stageSet(5); this.closed = true; this.objective('המסדרון נסגר לבאים חדשים', 'מי שכבר בתור עובר. סיים להעביר את כולם.');
+    this.stageSet(7); this.closed = true; if (this.mortarTeam) this.mortarTeam.alive = false; this.objective('המסדרון נסגר לבאים חדשים', 'מי שכבר בתור עובר. סיים להעביר את כולם.');
     this.radio(HQ, 'חפ״ק, כאן אוגדה. השעה 14:00. המסדרון נסגר לבאים חדשים. מי שכבר בתור עובר.');
     this.order('spk', 'close');
-    this.endAt = G.time + 50;
+    this.endAt = G.time + 50; this.setThreat('mortarTeam', false);
   }
   // ---------- casualties and care ----------
   // a civilian is hurt: promoted to a full character who sits down; medics come (no blood, no gore)
@@ -320,9 +337,8 @@ export class CorridorMission {
     if (uid === 'spk') {
       if (u.cd > 0 && action !== 'close') return `הכריזה תהיה זמינה בעוד ${Math.ceil(u.cd)} ש׳`; u.cd = 14; this.spkCalm = G.time + 30; this.press = Math.max(0, this.press - .15);
       const T = this.threats || {};
-      const txt = action === 'close' ? 'השעה שתיים. המעבר נסגר לבאים חדשים. מי שכבר בתור יעבור. שמרו על הילדים.' : action === 'car' ? 'הנהג ברכב הלבן: עצור מיד! עצור את הרכב ושים את הידיים מחוץ לחלון!' : action === 'hold' ? 'עצרו כאן וחכו. המחסום פתוח עד שתיים. כולם יעברו. אל תדחפו.'
-        : this.firing && !this.covered ? 'רדו לקרקע! התרחקו מהצד המערבי של הכביש! זחלו אל הקירות בצד המזרחי!' : T.crush ? 'לאט! אל תדחפו! נתיב נוסף נפתח. החזיקו את הילדים ביד ותתקדמו לאט.' : 'המסדרון פתוח עד השעה שתיים. המשיכו ללכת דרומה בכביש. החזיקו את הילדים קרוב. אל תסטו מהכביש.';
-      G.csound.loudspeaker(txt); this.spkOnAir = G.time + 6; if (!this.firing || this.covered) for (const a of G.crowd.agents) if (a.alive && a.state === 'flow' && a.surge) a.walk = Math.min(a.walk, rr(1.05, 1.3)); return true;
+      const key = SPK[action] ? action : this.firing && !this.covered ? 'sniper' : T.mortar ? 'mortar' : T.crush ? 'crush' : this.surging && G.time - this.surging < 120 ? 'rumor' : 'calm';
+      this.announce(key); if (!this.firing || this.covered) for (const a of G.crowd.agents) if (a.alive && a.state === 'flow' && a.surge) a.walk = Math.min(a.walk, rr(1.05, 1.3)); return true;
     }
     if (uid === 'med') return this.sendMedics(arg);
     if (uid === 'apcA' || uid === 'apcB' || uid === 'tank') return this.moveArmour(uid, action);
@@ -353,7 +369,8 @@ export class CorridorMission {
   }
   // ---------- precision strike and air force ----------
   civiliansNear(p, r) { let n = 0; for (const a of G.crowd.agents) if (a.alive && (a.x - p.x) ** 2 + (a.z - p.z) ** 2 < r * r) n++; for (const a of G.actors) if (a.alive && !a.removed && !a.friendly && !a.militant && !a.armed && a.pos.distanceTo(p) < r) n++; return n; }
-  uavStrike(t) {
+  uavStrike(t) { return this.strikeCard(t); }
+  uavStrikeOld(t) {
     const u = this.U.uav, tab = G.tablet; if (!t) return 'סמן קודם יעד ברחפן'; if (u.shots <= 0) return 'לכטב״ם לא נשארו חימושים'; if (u.cd > 0) return `הכטב״ם בדרך (${Math.ceil(u.cd)} ש׳)`;
     const p = this.posOf(t).clone(), near = this.civiliansNear(p, 35); const armed = !!(t.armedVisible || (t.armed && t.identified)); const inBldg = t.role === 'sniper' && !this.sniperOutT;
     const why = !armed ? 'אין זיהוי ודאי שהאדם הזה חמוש.' : inBldg ? 'הצלף בבניין שבקומת הקרקע שלו מסתתרות משפחות.' : near ? `יש ${near} אזרחים בטווח 35 מטר מהיעד.` : '';
@@ -400,6 +417,7 @@ export class CorridorMission {
     for (const m of this.movers) { if (m.done) continue; const o = m.o; const t = m.pts[m.i]; const dx = t.x - o.position.x, dz = t.z - o.position.z, L = Math.hypot(dx, dz);
       if (m.wait > 0) { m.wait -= dt; continue; } if (L < .5) { m.i++; if (m.i === 2) m.wait = 6; if (m.i >= m.pts.length) { m.done = true; G.scene.remove(o); G.crowd.passed++; } continue; }
       const sp = Math.min(m.v, L); o.position.x += dx / L * sp * dt; o.position.z += dz / L * sp * dt; o.rotation.y = Math.atan2(dx, dz); obs.push({ x: o.position.x, z: o.position.z, r: 2.8 }); }
+    this.opsUpdate(dt, obs);
     this.updateArmour(dt);
     // identification: the drone has to stay on the man for a few seconds
     if (this.idJob) { const j = this.idJob, s = j.obj; if (!s.alive || s.removed) this.idJob = null; else if (G.drone.track === s) { j.t += dt; if (j.t > 4) this.identifyDone(s); } }
@@ -438,7 +456,8 @@ export class CorridorMission {
     set('hurt', !!this.needsCare() && !this.U.med.busy && !T.old);
     set('old', this.oldMan && this.oldMan.collapsed && !this.oldMan.cared && !this.oldMan.medicComing);
     set('hold', this.U.cp.hold && c0(G.crowd) < 40);
-    set('flow', this.U.cp.flow !== 'open' && !(this.firing && !this.covered));
+    set('flow', this.U.cp.flow !== 'open' && !(this.firing && !this.covered) && !this.mortarOn);
+    this.opsThreats(set);
     const left = this.suspects.filter(s => s.alive && !s.removed && !s.detained && s.stage < 3);
     set('cell', !this.cellDone() && left.length > 0);
     if (T.sniperOut && (!this.sniper || !this.sniper.alive || this.sniper.removed)) set('sniperOut', false);
@@ -448,7 +467,7 @@ export class CorridorMission {
   cellDone() { return this.suspects.length && this.suspects.filter(s => s.armed).every(s => s.flagged || s.detained || !s.alive); }
   refreshTask() {
     if (!G.command) return; const T = this.threats || {};
-    const id = ['sniper', 'car', 'carCheck', 'crush', 'old', 'hurt', 'sniperOut', 'cell', 'hold', 'flow'].find(k => T[k]);
+    const id = ['mortar', 'sniper', 'rpg', 'car', 'carCheck', 'crush', 'bag', 'child', 'old', 'hurt', 'cell', 'convoy', 'sniperOut', 'mortarTeam', 'tunnel', 'tunnelSeal', 'lost', 'bagWait', 'tunnelWait', 'hold', 'flow'].find(k => T[k] && (this.taskDef(k) || {}).title);
     const t = id ? this.taskDef(id) : { kind: 'מצב', title: (this.calm && this.calm.title) || 'המסדרון פתוח', text: (this.calm && this.calm.text) || '', acts: [{ icon: 'spk', label: 'כריזה', fn: () => this.order('spk') }, { icon: 'tab', label: 'טאבלט', cls: 'alt', fn: () => G.tablet.show('drone') }] };
     const sig = id + '|' + t.title + '|' + t.acts.map(a => a.label).join(',');
     if (sig === this._taskSig) return; this._taskSig = sig; G.command.setTask(t);
@@ -470,13 +489,13 @@ export class CorridorMission {
         return { kind: 'התראה', title: 'כל החשודים נבדקו', text: 'החמושים שסומנו יעוכבו בנקודת הסינון.', acts: [{ icon: 'tab', label: 'טאבלט', cls: 'alt', fn: () => G.tablet.show('drone') }] };
       }
       case 'sniper': return { kind: 'ירי', threat: true, title: 'צלף יורה מבניין ממערב', text: 'קומה רביעית, 140 מ׳. בקומת הקרקע משפחות: אסור לתקוף את הבניין. עשן ושריון חוסמים את קו האש בלי לסכן אף אחד.', hot: 'cover',
-        acts: [{ icon: 'smoke', label: 'עשן ושריון לחסימה', fn: () => this.cover() }, eye(G.sniperWin), { icon: 'uav', label: 'תקיפת כטב״ם בבניין', cls: 'danger', fn: () => this.uavStrike(this.sniper) }] };
-      case 'sniperOut': return { kind: 'ירי', title: 'הצלף נסוג מערבה, לבד', text: 'הוא בשטח פתוח עם הרובה, רחוק מאזרחים. תקיפה מותרת עכשיו, אבל המסדרון כבר מוגן. בעוד חצי דקה ייעלם בהריסות.', acts: [eye(this.sniper, 'עקוב ברחפן'), { icon: 'uav', label: 'תקיפת כטב״ם', cls: 'danger', fn: () => this.uavStrike(this.sniper) }] };
+        acts: [{ icon: 'smoke', label: 'עשן ושריון לחסימה', fn: () => this.cover() }, { icon: 'smoke', label: 'פצמ״ר עשן', cls: 'alt', fn: () => this.mortarSmoke(V3(CL.sniper.x + 14, 0, CL.sniper.z + 22), 'בין בניין הצלף לכביש') }, { icon: 'uav', label: 'כרטיס תקיפה', cls: 'danger', fn: () => this.strikeCard(this.sniper) }] };
+      case 'sniperOut': return { kind: 'ירי', title: 'הצלף נסוג מערבה, לבד', text: 'הוא בשטח פתוח עם הרובה, רחוק מאזרחים. תקיפה מותרת עכשיו, אבל המסדרון כבר מוגן. בעוד חצי דקה ייעלם בהריסות.', acts: [eye(this.sniper, 'עקוב ברחפן'), { icon: 'uav', label: 'כרטיס תקיפה', cls: 'danger', fn: () => this.strikeCard(this.sniper) }] };
       case 'car': { const c = this.car; return { kind: 'רכב', threat: true, title: c && c.warned ? 'הרכב לא עוצר' : 'רכב נוסע נגד הזרם', text: c && c.warned ? 'הוא האט, אבל ממשיך. השלב הבא בנוהל: ירי אזהרה באוויר.' : 'מהר, צפונה, אל המחסום. נוהל עצירה: קודם קריאה וסימון, אחר כך ירי אזהרה באוויר, ורק אז ירי למנוע.', hot: 'spk',
         acts: c && c.warned ? [{ icon: 'rifle', label: 'ירי אזהרה באוויר', fn: () => this.carWarn(2) }, { icon: 'rifle', label: 'ירי למנוע', cls: 'danger', fn: () => this.carWarn(3) }] : [{ icon: 'spk', label: 'קריאה וסימון לעצור', fn: () => this.carWarn(1) }, { icon: 'rifle', label: 'ירי למנוע', cls: 'danger', fn: () => this.carWarn(3) }] }; }
       case 'carCheck': return { kind: 'רכב', title: 'הרכב עצר', text: 'בודק ייגש לרכב. אם הנהג אזרח, הוא יחזור דרומה בנתיב הרכבים.', acts: [{ icon: 'flag', label: 'בדוק את הרכב', fn: () => this.carCheck() }] };
     }
-    return { title: '', text: '', acts: [] };
+    return this.opsTask(id) || { title: '', text: '', acts: [] };
   }
   // ---------- markers over threats and our units (main view) ----------
   markers() {
@@ -488,7 +507,7 @@ export class CorridorMission {
     if (T.sniperOut && ok(this.sniper)) L.push({ id: 'snp2', pos: this.sniper.pos, label: 'צלף נסוג', kind: 'threat' });
     if (this.car && (T.car || T.carCheck)) L.push({ id: 'car', pos: this.car.o.position, label: 'רכב', kind: 'threat', h: 2.2 });
     for (const h of this.hurt) if (ok(h) && !h.cared) L.push({ id: 'h' + h.id, pos: h.pos, label: h.friendly ? 'לוחם פצוע' : 'פצוע', kind: 'threat', h: 1.5 });
-    const U = this.U; if (!U) return L;
+    const U = this.U; if (!U) return L; this.opsMarkers(L);
     L.push({ id: 'cpk', pos: V3(0, 0, 6), label: 'מחסום · ' + (U.cp.laneB ? '2 נתיבים' : 'נתיב 1') + (U.cp.flow === 'pause' ? ' · עצור' : U.cp.flow === 'slow' ? ' · איטי' : ''), kind: U.cp.flow === 'pause' ? 'unit warn' : 'unit', h: 3.6 });
     if (U.cp.hold) L.push({ id: 'hold', pos: V3(0, 0, CL.hold), label: 'נקודת המתנה · עצירה', kind: 'unit warn', h: 2.5 });
     const mp = this.medics.find(m => m.alive); if (mp && U.med.busy) L.push({ id: 'med', pos: mp.pos, label: 'חובשים', kind: 'unit', h: 2.1 });
@@ -515,6 +534,10 @@ export class CorridorMission {
     if (r === 'sniper') return { name: 'צלף חמוש', desc: this.sniperOutT ? 'יצא מהבניין עם רובה, בשטח פתוח. לבד.' : 'בקומה הרביעית. בקומת הקרקע של הבניין מסתתרות משפחות.', threat: true };
     if (r === 'old') return { name: 'קשיש', desc: o.cared ? 'טופל. בדרך לאוהל הרפואה.' : 'התמוטט על הכביש. זקוק לטיפול.', threat: false };
     if (r === 'sheltering') return { name: 'משפחה מסתתרת', desc: 'בקומת הקרקע של הבניין.', threat: false };
+    if (r === 'rpg') return { name: 'חמוש · חוליית נ״ט', desc: 'נושאים מטול RPG ורובה, בשטח פתוח בין ההריסות. אין אזרחים סביבם.', threat: true };
+    if (r === 'father') return { name: 'אב עם ילד פצוע', desc: o.priority ? 'בדרך לאוהל הרפואה.' : 'בתור. הילד מאבד הכרה.', threat: false };
+    if (r === 'lost') return { name: 'ילדה אבודה', desc: o.helped ? 'חיילת משגיחה עליה.' : 'לבד ליד המחסום.', threat: false };
+    if (r === 'mother') return { name: 'אם', desc: 'חוזרת לחפש את בתה.', threat: false };
     if (o.kid) return { name: 'ילד', desc: 'הולך עם משפחתו דרומה.', threat: false };
     return { name: 'אזרח', desc: o.hurt ? 'פצוע.' : 'הולך דרומה במסדרון. לא מזוהה כאיום.', threat: false };
   }
@@ -539,6 +562,7 @@ export class CorridorMission {
     if (this.car) dot(this.car.o.position, '#ff6a50', 'רכב');
     for (const s of this.U ? [this.U.apcA] : []) if (s.smokeUntil > G.time) { g.fillStyle = 'rgba(230,230,220,.35)'; g.beginPath(); g.ellipse(px(s.smokeAt.x), pz(s.smokeAt.z), 10, 22, 0, 0, 7); g.fill(); }
     g.fillStyle = '#f2b84b'; g.beginPath(); g.arc(px(G.player.pos.x), pz(G.player.pos.z), 5, 0, 7); g.fill(); g.font = '700 11px Heebo'; g.textAlign = 'center'; g.fillText('אתה', px(G.player.pos.x), pz(G.player.pos.z) + 16);
+    if (this.U && !v.brief) this.opsMap(g, px, pz);
     if (G.drone && !v.brief) { const d = G.drone.target; g.strokeStyle = '#e8f0e0'; g.lineWidth = 1.5; g.beginPath(); g.arc(px(d.x), pz(d.z), 9, 0, 7); g.stroke(); }
     g.fillStyle = 'rgba(232,220,196,.75)'; g.font = '12px Heebo'; g.textAlign = 'center'; g.fillText('צפון ↑', W - 34, 18); g.fillText('ים ←', 26, 18);
     g.fillText('כביש צלאח א־דין', px(0), 14); g.fillStyle = '#9ac0e6'; g.fillText('מחסום', px(-14), pz(2)); g.fillText('חפ״ק', px(CL.cp.x), pz(CL.cp.z) + 26);
@@ -546,7 +570,7 @@ export class CorridorMission {
   }
   // ---------- end ----------
   finish() {
-    if (G.state !== 'play') return; this.done = true; G.stats.end = performance.now();
+    if (G.state !== 'play') return; this.done = true; G.stats.end = performance.now(); this.strikeClose();
     const c = G.crowd; this.st.stranded = c.queueLen(); this.st.passed = c.passed;
     bus.emit('missionComplete', {});
   }
@@ -555,9 +579,12 @@ export class CorridorMission {
     $('st-time').textContent = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`; $('st-pass').textContent = s.passed; $('st-civ').textContent = s.civHurt; $('st-idf').textContent = s.idfHurt;
     const onTime = s.stranded < 15; const clean = s.civHurt === 0 && s.idfHurt === 0;
     const perfect = clean && s.wrongDetain === 0 && onTime;
-    $('endGrade').innerHTML = perfect ? (s.militants ? 'אף אזרח ואף לוחם לא נפגעו.<small>המסדרון עבד בזמן, והחמושים לא עברו.</small>' : 'אף אחד לא נפגע.<small>כולם עברו בזמן, והחמושים לא עברו. זו המטרה.</small>')
+    // militants killed in a checked strike are not "nobody hurt": the line says exactly who was not hurt
+    $('endGrade').innerHTML = perfect ? (s.militants ? 'אף אזרח ואף לוחם לא נפגעו.<small>המסדרון עבד בזמן, החמושים לא עברו, וכל תקיפה עברה בדיקת מידתיות.</small>' : 'אף אחד לא נפגע.<small>כולם עברו בזמן, והחמושים לא עברו. זו המטרה.</small>')
       : clean ? 'אף אחד לא נפגע, אבל היו מחירים.<small>' + (s.wrongDetain ? 'אנשים לא חמושים עוכבו בגלל זיהוי לא ודאי. ' : '') + (!onTime ? 'לא כולם הספיקו לעבור לפני הסגירה.' : '') + '</small>'
-      : s.civHurtUnjust || (s.civHurt && !s.idfHurt) ? 'אזרחים נפגעו.<small>פגיעה באזרחים היא הכישלון הכבד ביותר במסדרון הומניטרי, גם כשהמשימה הושלמה.</small>' : 'לוחמים נפגעו.<small>הירי נמשך זמן רב מדי בלי מסך עשן. אפשר היה לחסום את קו האש מוקדם יותר.</small>';
+      : s.civHurtUnjust || (s.civHurt && !s.idfHurt) ? 'אזרחים נפגעו.<small>פגיעה באזרחים היא הכישלון הכבד ביותר במסדרון הומניטרי, גם כשהמשימה הושלמה.</small>' : 'לוחמים נפגעו.<small>איום שלא טופל בזמן פגע בכוח. עשן, שריון ותקיפה בודקת מוקדם יותר היו מונעים את זה.</small>';
+    const rows = this.scoreRows(true), tot = rows.reduce((a, r) => a + r.pts, 0);
+    const sc = $('endScore'); if (sc) sc.innerHTML = `<div class="mh"><span>ציון המפקד</span><b>${tot}/100</b></div>` + rows.map(r => `<div class="mr${r.pts < r.max ? ' low' : ''}"><span>${r.k}</span><em>${r.why}</em><b>${r.pts}/${r.max}</b></div>`).join('');
     const li = []; li.push([`כ־${s.passed} אנשים עברו את המחסום דרומה`, false]);
     for (const p of [...new Set(s.prevented)]) li.push([p, false]);
     if (s.detained - s.wrongDetain > 0) li.push([`${s.detained - s.wrongDetain} חמושים עוכבו בלי ירייה`, false]);
@@ -569,3 +596,5 @@ export class CorridorMission {
     $('endList').innerHTML = li.map(([t, b]) => `<li class="${b ? 'bad' : ''}">${t}</li>`).join('');
   }
 }
+
+Object.assign(CorridorMission.prototype, OPS);

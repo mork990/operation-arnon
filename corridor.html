@@ -580,6 +580,32 @@ body.touch .tb-tabs button,body.touch #tbClose{min-height:44px;padding:0 13px}
 body.touch .feedctl button{min-height:44px;min-width:48px}
 body.touch #tgtInfo .acts button,body.touch .ucard button,body.touch .pickbar button,body.touch .cfm button,body.touch #intelList li .go{min-height:44px}
 @media (prefers-reduced-motion:reduce){#task.pulse,#cmdbar button.hot,#bTablet.unread,.wm.threat i{animation:none!important}}
+
+/* strike card: proportionality and the legal adviser's check before anything lethal (above the tablet) */
+#scard{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.5);font-family:Heebo,sans-serif;direction:rtl;padding:10px}
+#scard[hidden]{display:none}
+#scard .sbox{background:linear-gradient(180deg,#191a13,#11120d);border:1px solid #4a4b42;border-right:4px solid var(--red);border-radius:6px;width:min(560px,96vw);max-height:94vh;overflow:auto;padding:12px 14px;display:grid;gap:9px;box-shadow:0 14px 40px rgba(0,0,0,.5)}
+#scard .sh span{display:block;font:600 10.5px "IBM Plex Mono",Heebo,monospace;letter-spacing:.1em;color:#ff8a70}#scard .sh b{font-size:18px;font-weight:800}
+#scMun{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
+#scMun button{background:#24251f;border:1px solid #44453c;color:var(--ink);border-radius:5px;padding:6px 5px;text-align:right;display:grid;gap:2px;font:600 11.5px Heebo,sans-serif}
+#scMun button small{font-size:10px;color:var(--dim);font-weight:400}
+#scMun button[aria-pressed="true"]{border-color:var(--amber);background:#3a3420}#scMun button:disabled{opacity:.4}
+#scRows{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:0;font-size:13px}#scRows dt{color:var(--dim)}#scRows dd{margin:0}#scRows .bad{color:#ff8a70;font-weight:800}
+.sleg{font-size:13px;line-height:1.5;padding:7px 10px;border:1px dashed #4a4b42;border-radius:4px}.sleg b{color:var(--amber);margin-left:6px}
+.sleg.ok{border-color:#6f8a4a;background:rgba(80,110,50,.15)}.sleg.no{border-color:#7a3a30;background:rgba(120,40,30,.18)}.sleg.wait{opacity:.75}
+#scard .row{display:flex;gap:8px}#scard .row button{min-height:40px;padding:0 14px;border-radius:5px;font:800 13px Heebo,sans-serif;border:1px solid #4a4b42;background:#2b2c26;color:var(--ink)}
+#scard .row button.go{background:var(--amber);border-color:var(--amber);color:#15130e}#scard .row button.danger{background:#3a1d18;border-color:#7a3a30;color:#ffbfb0}#scard .row button:disabled{opacity:.45}
+body.touch #scard .sbox{padding:8px 10px;gap:6px}body.touch #scMun button{font-size:10.5px;padding:4px}body.touch #scRows{font-size:11.5px}body.touch .sleg{font-size:11.5px;padding:5px 8px}
+/* the mid-mission report and the end score: one line per part of the grade */
+#midrep{position:absolute;left:50%;top:calc(70px + env(safe-area-inset-top,0px));transform:translate(-50%,-8px);opacity:0;pointer-events:none;transition:.35s;width:min(440px,60vw);background:rgba(14,15,11,.92);border:1px solid var(--line);border-right:4px solid #9ac0e6;border-radius:5px;padding:9px 12px;z-index:4;display:grid;gap:4px}
+#midrep.on{opacity:1;transform:translate(-50%,0);pointer-events:auto}#midrep p{margin:4px 0 0;font-size:12px;color:var(--dim)}
+.mh{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;color:#9ac0e6;font-weight:700}.mh b{font:800 20px "IBM Plex Mono",monospace;color:var(--ink)}
+.mr{display:grid;grid-template-columns:auto 1fr auto;gap:10px;font-size:12.5px;align-items:baseline}.mr em{font-style:normal;color:var(--dim);font-size:11.5px}.mr b{font-family:"IBM Plex Mono",monospace}.mr.low b{color:#ffbf70}
+#endScore{display:grid;gap:3px;border:1px solid var(--line);padding:8px 10px;background:#0d0e0a}
+body.touch #midrep{top:calc(48px + env(safe-area-inset-top,0px));width:52vw;padding:6px 9px}body.touch .mr{font-size:11px}body.touch .mr em{font-size:10px}
+/* phones: the notification stays short and clear of the target markers and the task card */
+body.touch #notif{max-width:40vw;padding:6px 10px}body.touch #notif span{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;font-size:11.5px;line-height:1.38}
+body.touch #cmdbar button{width:60px}
 </style>
 </head><body>
 <canvas id="c"></canvas>
@@ -613,7 +639,7 @@ body.touch #tgtInfo .acts button,body.touch .ucard button,body.touch .pickbar bu
       <label for="sens">רגישות כיוון</label><input id="sens" type="range" min=".4" max="2.2" step=".05" value="1">
       <span>שמע</span><div class="row"><label><input type="checkbox" id="voice" checked> קריינות</label><label><input type="checkbox" id="subs" checked> כתוביות</label></div>
     </div>
-    <div class="keys" id="keyhelp"><span><kbd>1</kbd>–<kbd>5</kbd> פקודות</span><span><kbd>F</kbd> פעולה מומלצת</span><span><kbd>T</kbd> טאבלט</span><span><kbd>V</kbd> משקפת</span><span>גרירה: סיבוב המבט · גלגלת: זום</span><span><kbd>Esc</kbd> השהיה</span></div>
+    <div class="keys" id="keyhelp"><span><kbd>1</kbd>–<kbd>6</kbd> פקודות</span><span><kbd>F</kbd> פעולה מומלצת</span><span><kbd>T</kbd> טאבלט</span><span><kbd>V</kbd> משקפת</span><span>גרירה: סיבוב המבט · גלגלת: זום</span><span><kbd>Esc</kbd> השהיה</span></div>
     <p class="small">הדמויות, הדיאלוגים ושמות הקוד במשחק בדויים. האירועים מפושטים ואינם תיעוד. <span id="build"></span></p>
   </div>
 </div>
@@ -646,6 +672,7 @@ body.touch #tgtInfo .acts button,body.touch .ucard button,body.touch .pickbar bu
   <div id="hp"><div id="hpv"></div></div>
   <div id="gearbar"><button data-gear="bino" aria-pressed="false">משקפת<kbd>V</kbd></button></div>
   <div id="wmarks"></div>
+  <div id="midrep" role="status"></div>
   <div id="task" aria-live="polite" hidden><div class="th"><span id="taskK">משימה</span><b id="taskT"></b></div><p id="taskP"></p><div class="tacts" id="taskA"></div></div>
   <div id="aimbar"><span id="aimTxt"></span><button id="aimGo">ירה</button><button id="aimX">ביטול</button></div>
   <div id="cmdbar">
@@ -654,6 +681,7 @@ body.touch #tgtInfo .acts button,body.touch .ucard button,body.touch .pickbar bu
     <button data-cmd="flow"><em class="cd"></em><i data-icon="flow"></i><span>קצב: רגיל</span><i class="n"></i><kbd>3</kbd></button>
     <button data-cmd="med"><em class="cd"></em><i data-icon="med"></i><span>חובשים</span><i class="n"></i><kbd>4</kbd></button>
     <button data-cmd="cover"><em class="cd"></em><i data-icon="smoke"></i><span>עשן ושריון</span><i class="n"></i><kbd>5</kbd></button>
+    <button data-cmd="forces"><em class="cd"></em><i data-icon="flag"></i><span>כוחות</span><i class="n"></i><kbd>6</kbd></button>
   </div>
   <div id="cross"><i></i><i></i><i></i><i></i><i></i></div>
   <div id="hitm"></div>
@@ -698,6 +726,14 @@ body.touch #tgtInfo .acts button,body.touch .ucard button,body.touch .pickbar bu
   </div>
 </div>
 
+<div id="scard" role="dialog" aria-modal="true" aria-labelledby="scT" hidden><div class="sbox">
+  <div class="sh"><span>כרטיס תקיפה · בדיקת מידתיות</span><b id="scT"></b></div>
+  <div id="scMun" role="group" aria-label="חימוש"></div>
+  <dl id="scRows"></dl>
+  <div id="scLeg" class="sleg"></div>
+  <div class="row"><button id="scGo" class="go">אשר תקיפה</button><button id="scNo">ביטול</button></div>
+</div></div>
+
 <div id="pause" class="ov" role="dialog" aria-modal="true" aria-labelledby="pauseh" hidden><div class="card"><div class="eyebrow">המסדרון · משימה 3</div><h2 id="pauseh">השהיה</h2><div class="row"><button class="btn" id="bresume">המשך</button><button class="btn ghost" id="brestart">התחל מחדש</button><button class="btn ghost" id="bquit">לתפריט</button></div>
   <div class="settings"><span>גרפיקה</span><div class="seg" role="group" aria-label="איכות"><button data-q="0">נמוכה</button><button data-q="1">בינונית</button><button data-q="2">גבוהה</button></div></div><p class="small" id="diag"></p></div></div>
 <div id="fail" class="ov" role="alertdialog" aria-modal="true" aria-labelledby="failtxt" hidden><div class="card"><div class="eyebrow">המשימה נכשלה</div><h2 id="failtxt"></h2><div class="row"><button class="btn" id="bretry">נסה שוב</button></div></div></div>
@@ -709,9 +745,10 @@ body.touch #tgtInfo .acts button,body.touch .ucard button,body.touch .pickbar bu
     <li><span class="ic" data-icon="lane"></span><div><b>המחסום</b>: נתיב 2, קצב הבדיקה, ועצירה בנקודת ההמתנה כשהתור נדחס.</div></li>
     <li><span class="ic" data-icon="med"></span><div><b>חובשים</b> לכל מי שהתמוטט או נפצע. <b>כריזה</b> בערבית מרגיעה ומכוונת את הטור.</div></li>
     <li><span class="ic" data-icon="eye"></span><div><b>רחפן תצפית</b>: נוגעים באדם, וכמה שניות של תצפית קרובה מזהות אם הוא חמוש. עיכוב רק אחרי זיהוי.</div></li>
-    <li><span class="ic" data-icon="smoke"></span><div><b>עשן ושריון</b> חוסמים קו אש. <b>כטב״ם וחיל האוויר</b> רק בזיהוי ודאי, רחוק מאזרחים.</div></li>
+    <li><span class="ic" data-icon="smoke"></span><div><b>עשן ושריון</b> חוסמים קו אש. כל תקיפה עוברת <b>כרטיס מידתיות</b> ובדיקת יועמ״ש: רק בזיהוי ודאי, בלי אזרחים בטווח.</div></li>
+    <li><span class="ic" data-icon="flag"></span><div><b>כוחות</b> (<span class="keyonly">6 / </span>טאבלט): צוות חי״ר, הנדסה ורובוט, דחפור D9, משטרה צבאית, מרגמות עשן, מסוק.</div></li>
   </ul>
-  <p class="small" style="margin:0">הכרטיס שלמעלה מראה מה קורה עכשיו ומה מומלץ לעשות. סימון אדום בשטח הוא איום, כחול הוא הכוחות שלנו. <span class="keyonly">במחשב: גרירה עם העכבר מסובבת את המבט, הגלגלת מקרבת, מקשים 1–5 לפקודות ו־F לפעולה המומלצת.</span><span class="touch-only">גרירה על המסך מסובבת את המבט.</span></p>
+  <p class="small" style="margin:0">הכרטיס שלמעלה מראה מה קורה עכשיו ומה מומלץ לעשות. סימון אדום בשטח הוא איום, כחול הוא הכוחות שלנו. <span class="keyonly">במחשב: גרירה עם העכבר מסובבת את המבט, הגלגלת מקרבת, מקשים 1–6 לפקודות ו־F לפעולה המומלצת.</span><span class="touch-only">גרירה על המסך מסובבת את המבט.</span></p>
   <div class="row"><button class="btn" id="bIntro">הבנתי, מתחילים</button></div></div></div>
 <div id="hist" class="ov" role="dialog" aria-modal="true" aria-label="רקע היסטורי" hidden><div class="card">
   <div class="eyebrow">רקע היסטורי</div><h2>מסדרון הפינוי, נובמבר 2023</h2>
@@ -723,6 +760,7 @@ body.touch #tgtInfo .acts button,body.touch .ucard button,body.touch .pickbar bu
 <div id="end" class="ov" role="dialog" aria-label="סיום המשימה" hidden><div class="card">
   <div class="eyebrow" id="endEyebrow">14:00 · המסדרון נסגר</div>
   <p class="grade" id="endGrade"></p>
+  <div id="endScore"></div>
   <ul class="outcome" id="endList"></ul>
   <div class="stats"><div><b id="st-time">—</b><span>משך</span></div><div><b id="st-pass">—</b><span>עברו את המחסום</span></div><div><b id="st-civ">—</b><span>אזרחים פצועים</span></div><div><b id="st-idf">—</b><span>לוחמים פצועים</span></div></div>
   <div class="row"><button class="btn" id="bagain">שחק שוב</button><a class="btn ghost" href="fence.html" style="text-decoration:none">למשימה 2</a><a class="btn ghost" href="index.html" style="text-decoration:none">למשימה 1</a></div>

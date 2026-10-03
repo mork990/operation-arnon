@@ -4,6 +4,8 @@
 import * as THREE from 'three';
 import { G, rr, R, pick, bus } from '../core.js';
 import { FSFX } from '../fence/vo.js';
+import { speak, stopVoice } from '../voice.js';
+export { stopVoice };
 
 export class CorridorSound {
   constructor() { this.level = 0; this.target = 0; this.drones = new Map(); this.subT = null; }
@@ -39,12 +41,15 @@ export class CorridorSound {
   }
   jet() { const c = this.c; const s = this.fsfx('jet', { pos: G.camera.position.clone().add(new THREE.Vector3(300, 400, 0)), vol: 1.4, ref: 120, roll: .6, rev: .5 }); if (s && s._panner) { const p = s._panner; const t = c.currentTime; p.positionX.setValueAtTime(-1200, t); p.positionX.linearRampToValueAtTime(1500, t + 5); } }
   // radio traffic and announcements are subtitles (this mission has no recorded voice); the squelch sells the radio
-  radio(who, text, color = '#9ac0e6', sec = 5.5, radio = true) {
-    if (radio && G.audio.squelch) G.audio.squelch();
+  // spoken too (voice.js, Web Speech): it plays its own squelch for radio lines. vwho overrides the voice profile
+  // (the commander's own orders are 'cmd', the deputy beside him 'team')
+  radio(who, text, color = '#9ac0e6', sec = 5.5, radio = true, vwho = null) {
+    if (vwho !== false) try { const p = speak(text, { who: vwho || (radio ? who : 'cmd'), radio }); if (p && p.catch) p.catch(() => {}); } catch (e) {}
     bus.emit('sub', { speaker: { name: who, color }, text, radio }); clearTimeout(this.subT); this.subT = setTimeout(() => bus.emit('sub', null), sec * 1000);
   }
   // the loudspeaker on the Humvee: two-tone chime, then a megaphone-band babble with a slap-back echo off the buildings
-  loudspeaker(text) {
+  loudspeaker(text, ar = null, interrupt = false) {
+    if (ar) setTimeout(() => { try { const p = speak(ar, { who: 'spk', lang: 'ar', interrupt }); if (p && p.catch) p.catch(() => {}); } catch (e) {} }, 800);
     const c = this.c, A = G.audio, t0 = c.currentTime + .05, at = G.spkPos || new THREE.Vector3(9, 3, -12);
     const p = c.createPanner(); p.panningModel = 'HRTF'; p.refDistance = 25; p.rolloffFactor = .8; p.positionX.value = at.x; p.positionY.value = at.y; p.positionZ.value = at.z; p.connect(A.sfx);
     const dl = c.createDelay(1); dl.delayTime.value = .32; const dg = c.createGain(); dg.gain.value = .3; dl.connect(dg); dg.connect(p); const r = c.createGain(); r.gain.value = .45; p.connect(r); r.connect(A.revSend);
@@ -56,7 +61,7 @@ export class CorridorSound {
     let t = t0 + 1; const VOW = [[760, 1250], [380, 870], [330, 2000], [500, 900], [520, 1700]];
     for (let w = 0; w < 14; w++) { const syl = 2 + Math.floor(R() * 3); for (let s = 0; s < syl; s++) { const [a, b] = pick(VOW), d = rr(.11, .19); f1.frequency.setValueAtTime(a, t); f2.frequency.setValueAtTime(b, t); o.frequency.setValueAtTime(rr(118, 140), t); g.gain.setTargetAtTime(.9, t, .015); g.gain.setTargetAtTime(.15, t + d * .75, .02); t += d; } g.gain.setTargetAtTime(0, t, .03); t += w % 5 === 4 ? .45 : .09; }
     o.start(t0 + 1); o.stop(t + .2);
-    this.radio('רמקול · כריזה בערבית', text, '#f2b84b', Math.max(5, t - t0), false);
+    this.radio('רמקול · כריזה בערבית', text, '#f2b84b', Math.max(5, t - t0), false, false);
   }
   droneLoop(g, vol = .3) { const c = this.c, A = G.audio; const out = c.createGain(); out.gain.value = 0; const p = c.createPanner(); p.panningModel = 'HRTF'; p.refDistance = 30; p.rolloffFactor = 1; out.connect(p); p.connect(A.sfx); const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 700; bp.Q.value = .7; bp.connect(out);
     const osc = [96, 192, 290].map((f, i) => { const o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f * rr(.99, 1.01); const og = c.createGain(); og.gain.value = [.5, .3, .15][i]; o.connect(og); og.connect(bp); o.start(); return o; });

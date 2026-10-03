@@ -40,15 +40,20 @@ export class Tablet {
       if (best) { this.select(best); this.show('drone'); G.drone.target.copy(G.mission.posOf(best.obj)); } else { G.drone.target.copy(p); this.flash('"זיק" מכוון לנקודה. פתח את לשונית "זיק"'); } });
     $('cfmNo').addEventListener('click', () => { $('cfm').classList.remove('on'); this._cfm = null; });
     $('cfmYes').addEventListener('click', () => { const f = this._cfm; $('cfm').classList.remove('on'); this._cfm = null; f && f(); });
+    // helmet cameras: pick a soldier, or step through them
+    $('bodyPick').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; G.feeds.idx = +b.dataset.i; G.audio.playS('dry', { vol: .2, rate: 2.4 }); });
+    $('bodyPrev').addEventListener('click', () => { G.feeds.idx--; }); $('bodyNext').addEventListener('click', () => { G.feeds.idx++; });
     this.statusT = 0; this.mapT = 0;
   }
+  // a tab that has something new to show (the robot's feed when it starts its run)
+  flagTab(tab) { const b = document.querySelector(`.tb-tabs button[data-tab="${tab}"]`); if (b && !(this.open && this.tab === tab)) b.classList.add('unread'); }
   // ---------- open / close ----------
   toggle() { this.open ? this.close() : this.show(this.tab); }
   show(tab) {
     if (G.state !== 'play') return;
     if (!this.open) { this.open = true; this.el.hidden = false; document.body.classList.add('tabopen'); $('touch').hidden = true; G.audio.playS('dry', { vol: .3, rate: 1.8 }); if (this.firstOpen) { this.firstOpen = false; G.mission.onTabletFirst && G.mission.onTabletFirst(); } }
     this.tab = tab; document.querySelectorAll('.tb-tabs button').forEach(b => { const on = b.dataset.tab === tab; b.setAttribute('aria-selected', on); if (on) b.classList.remove('unread'); });
-    for (const p of ['drone', 'map', 'intel', 'forces']) $('tb-' + p).classList.toggle('on', p === tab);
+    for (const p of ['drone', 'map', 'intel', 'forces', 'robot', 'body']) $('tb-' + p).classList.toggle('on', p === tab);
     G.drone.active = tab === 'drone';
     if (tab === 'intel') { this.unread = 0; this.badge(); for (const it of G.mission.intel) it.isNew = false; setTimeout(() => this.renderIntel(), 1500); this.renderIntel(true); }
     if (tab === 'forces') this.renderUnits();
@@ -84,7 +89,7 @@ export class Tablet {
     acts.push({ l: G.drone.track === o ? 'הפסק מעקב' : 'עקוב', f: () => { G.drone.track = G.drone.track === o ? null : o; this.renderTarget(); } });
     acts.push({ l: 'זהה (זום)', f: () => { G.drone.track = o; G.drone.fovT = 3.4; } });
     // a strike on someone not positively identified as armed asks twice
-    const hit = (kind, label) => ({ l: label, c: 'danger', dis: U[kind].cd > 0 || U[kind].pending || (kind === 'zik' && U.zik.ammo <= 0), f: () => info.threat ? M.strike(kind, o) : this.confirm('אין זיהוי ודאי של חמוש', 'תקיפה בלי זיהוי ודאי עלולה לפגוע באזרח. לאשר בכל זאת?', () => { const r = M.strike(kind, o); if (typeof r === 'string') this.flash(r); }, true) });
+    const hit = (kind, label) => ({ l: label, c: 'danger', dis: U[kind].cd > 0 || U[kind].pending || (kind === 'zik' && U.zik.ammo <= 0), f: () => M.requestStrike(kind, o) });
     acts.push(hit('zik', `"זיק" (${U.zik.ammo})`), hit('tank', 'פגז טנק'), hit('air', 'סיוע אווירי'));
     acts.push({ l: 'בטל סימון', f: () => { this.marks = this.marks.filter(x => x !== m); if (G.drone.track === o) G.drone.track = null; this.select(null); } });
     const box = $('tgtActs'); box.innerHTML = ''; for (const a of acts) { const b = document.createElement('button'); b.textContent = a.l; if (a.c) b.className = a.c; b.disabled = !!a.dis || !alive; b.onclick = e => { e.stopPropagation(); const r = a.f(); if (typeof r === 'string') this.flash(r); setTimeout(() => this.renderTarget(), 50); }; box.appendChild(b); }
@@ -114,11 +119,14 @@ export class Tablet {
     if (ph === 'shaft') fa.push({ l: 'הנח מטענים', c: 'go', dis: !M.trapFound || M.charged || M.charging, f: () => M.placeCharges() }, { l: 'הוצא את הקשיש', dis: !M.warned || !M.holdout() || M.escorting, f: () => M.escortHoldout() }, { l: 'צא מהרדיוס', c: 'go', dis: !M.charged, f: () => M.withdraw() });
     if (ph === 'ready') fa.push({ l: 'פוצץ את הפיר', c: 'danger', f: () => M.blast() });
     card(U.force, `${al.length - hurt} כשירים${hurt ? ` · ${hurt} פצועים` : ''} · ${fst}`, fa, hurt ? 'bad' : '');
-    card(U.robot, U.robot.used ? (M.robotBusy ? 'בפיר…' : 'סיים סריקה') : 'מוכן, על הנמר', [{ l: 'שלח לפיר', c: 'go', dis: ph !== 'shaft' || U.robot.used, f: () => M.sendRobot() }]);
+    card(U.robot, M.robot && M.robot.hold ? 'על שפת הפיר' : U.robot.used ? (M.robotBusy ? 'בפיר…' : 'בתחתית הפיר') : 'מוכן, עם הכוח', [{ l: 'שלח לפיר', c: 'go', dis: ph !== 'shaft' || (U.robot.used && !(M.robot && M.robot.hold)), f: () => M.sendRobot() }, { l: 'פיד הרובוט', f: () => this.show('robot') }]);
+    if (ph === 'entry') card(U.dog, 'מוכן ליד הדלת', [{ l: 'הכלב נכנס ראשון', c: 'go', f: () => M.entry('dog') }]);
+    if (ph === 'breach') fa.length || card({ name: 'פריצה', sub: 'הדלת של בית ב׳' }, 'ממתינים לפקודה', [{ l: 'פריצה שקטה', c: 'go', f: () => M.breach('quiet') }, { l: 'מטען פריצה', c: 'danger', f: () => M.breach('loud') }]);
+    if (M.x2Known && !M.x2Sent) card({ name: 'הפתח השני', sub: 'מחסן הרוס, 110 מ׳ צפונה' }, 'פתוח', [{ l: 'צוות ומטען', c: 'go', f: () => M.sealX2() }]);
     card(U.spk, U.spk.cd > 0 ? `משדר… (${Math.ceil(U.spk.cd)} ש׳)` : M.warned ? 'השכנים הוזהרו' : 'מוכן', [{ l: 'כריזה ואזהרה בטלפון', c: 'go', dis: U.spk.cd > 0, f: () => M.order('spk') }, { l: 'נקישה על הגג (הבית הדרומי)', dis: !M.warned || !M.holdout(), f: () => M.roofKnock() }]);
     card(U.smoke, `${U.smoke.n} רימונים${M.smokeT > 0 ? ' · מסך פעיל' : ''}`, [{ l: 'מסך עשן סביב הכוח', c: 'go', dis: U.smoke.n <= 0, f: () => M.smoke() }]);
     const tgt = this.sel && this.sel.obj; const tl = tgt ? ` על ${this.sel.label}` : ' (סמן יעד ב"זיק")';
-    for (const k of ['zik', 'tank', 'air']) { const u = U[k]; card(u, u.pending ? 'בדרך ליעד…' : u.cd > 0 ? `טוען… (${Math.ceil(u.cd)} ש׳)` : k === 'zik' ? `מוכן · ${u.ammo} חימושים` : 'מוכן', [{ l: 'תקוף' + tl, c: 'danger', dis: !tgt || u.cd > 0 || u.pending || (k === 'zik' && u.ammo <= 0), f: () => M.strike(k, tgt) }]); }
+    for (const k of ['zik', 'tank', 'air']) { const u = U[k]; card(u, u.pending ? 'בדרך ליעד…' : u.cd > 0 ? `טוען… (${Math.ceil(u.cd)} ש׳)` : k === 'zik' ? `מוכן · ${u.ammo} חימושים` : 'מוכן', [{ l: 'תקוף' + tl, c: 'danger', dis: !tgt || u.cd > 0 || u.pending || (k === 'zik' && u.ammo <= 0), f: () => M.requestStrike(k, tgt) }]); }
     card(U.apc, U.apc.busy ? 'בדרך / באיסוף' : 'מוכן במאסף', [{ l: 'צא לאסוף את הכוח', c: 'go', dis: U.apc.busy || !(ph === 'extract' || ph === 'ready'), f: () => M.pickup() }]);
   }
   resizeMap() { const c = $('tmap'); const r = c.getBoundingClientRect(); const s = Math.min(2, devicePixelRatio || 1); c.width = Math.max(10, Math.round(r.width * s)); c.height = Math.max(10, Math.round(r.height * s)); }
@@ -145,6 +153,7 @@ export class Tablet {
       if (box._h !== html) { box.innerHTML = html; box._h = html; }
       this.tgtT = (this.tgtT || 0) - dt; if (this.sel && this.tgtT <= 0) { this.tgtT = .6; this.renderTarget(); }
     }
+    if (this.tab === 'robot' || this.tab === 'body') G.feeds.hud(this.tab);
     if (this.tab === 'map') { this.mapT -= dt; if (this.mapT <= 0) { this.mapT = .15; const c = $('tmap'); if (c.width < 20) this.resizeMap(); G.mission.drawMap(c.getContext('2d'), c.width, c.height, {}); } }
     if (this.tab === 'forces') { this.uT = (this.uT || 0) - dt; if (this.uT <= 0) { this.uT = 1; this.renderUnits(); } }
     this.statusT -= dt; if (this.statusT <= 0) { this.statusT = .4; const M = G.mission; const s = M.st;

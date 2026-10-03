@@ -440,3 +440,65 @@ export function buildCorridorWorld() {
   armour();
   G.birds = makeBirds(V3(0, 0, -150), 2, 8, 200);
 }
+
+// ---------- forces and props of the extended scenario (build 24, round 2) ----------
+// all low poly and merged per material: each is 2-4 draw calls, and most exist only while their event runs
+function mergedGroup(parts, shadow = true) { const g = new THREE.Group(); for (const [m, list] of parts) { const me = new THREE.Mesh(mergeGeometries(list.map(x => x.index ? x.toNonIndexed() : x)), m); me.castShadow = shadow; me.receiveShadow = true; g.add(me); } return g; }
+function partsBag() { const parts = new Map(); const put = (m, geo) => { if (!parts.has(m)) parts.set(m, []); parts.get(m).push(geo); }; return { parts, put }; }
+// Caterpillar D9 with the IDF's armour kit: the slab-sided armoured cab, the big blade and the rear ripper.
+// Olive like the rest of the armour; it is the machine the engineers clear rubble and seal shafts with.
+export function makeD9() {
+  const { parts, put } = partsBag(); const b = (w, h, d, m, x, y, z) => put(m, box(w, h, d, 1).translate(x, y, z));
+  for (const s of [-1, 1]) { b(.62, .95, 4.6, CM.tire, s * 1.45, .5, 0); b(.5, .2, 4.2, CM.tire, s * 1.45, 1.05, 0); }
+  b(2.3, 1.2, 4.0, CM.olive, 0, 1.45, -.1); b(1.9, .4, 2.2, CM.oliveDark, 0, 2.2, .7);
+  b(1.9, 1.45, 1.7, CM.olive, 0, 2.75, -.6); b(1.6, .1, 1.5, CM.oliveDark, 0, 3.52, -.6);
+  for (const s of [-1, 1]) b(.06, .32, 1.1, CM.tire, s * .96, 2.95, -.6);
+  b(1.4, .3, .06, CM.tire, 0, 2.95, .26);
+  // the blade: a curved plate in front, two push arms
+  const bl = new THREE.CylinderGeometry(2.4, 2.4, 4.4, 10, 1, true, -.42, .84); bl.rotateZ(Math.PI / 2); bl.rotateY(Math.PI / 2); bl.scale(1, .55, .35); bl.translate(0, 1.05, 3.25); put(CM.oliveDark, bl);
+  for (const s of [-1, 1]) b(.2, .25, 2.0, CM.tire, s * 1.2, .9, 2.2);
+  b(.18, 1.1, .25, CM.tire, 0, .7, -2.6); b(.6, .2, .6, CM.oliveDark, 0, 1.3, -2.4);
+  const g = mergedGroup(parts); G.scene.add(g); (G.hotObjects || (G.hotObjects = [])).push(g); return g;
+}
+// the engineers' tracked bomb-disposal robot: a small chassis, a camera mast and a gripper arm
+export function makeRobot() {
+  const { parts, put } = partsBag(); const b = (w, h, d, m, x, y, z) => put(m, box(w, h, d, 1).translate(x, y, z));
+  for (const s of [-1, 1]) b(.14, .18, .78, CM.tire, s * .3, .1, 0); b(.48, .16, .62, CM.oliveDark, 0, .24, 0);
+  b(.05, .55, .05, CM.steelDark, 0, .58, -.18); b(.16, .1, .12, CM.black, 0, .9, -.18);
+  const arm = new THREE.CylinderGeometry(.03, .03, .7, 5); arm.rotateX(1.0); arm.translate(0, .52, .22); put(CM.steelDark, arm); b(.12, .06, .14, CM.black, 0, .72, .52);
+  const g = mergedGroup(parts, false); G.scene.add(g); return g;
+}
+// a heap of concrete slabs and rebar across the vehicle lane: the facade of a hit house that fell into the road
+export function rubbleBlock(x, z) {
+  const { parts, put } = partsBag(); const q = rng(7707);
+  for (let i = 0; i < 9; i++) { const w = 1 + q() * 1.8, h = .25 + q() * .5, d = .8 + q() * 1.4; const g = box(w, h, d, 1); g.rotateX((q() - .5) * .9); g.rotateY(q() * 3); g.rotateZ((q() - .5) * .7); g.translate((q() - .5) * 4, h * .4 + q() * .5, (q() - .5) * 3); put(q() < .6 ? CM.block : CM.concrete, g); }
+  for (let i = 0; i < 6; i++) { const g = new THREE.CylinderGeometry(.012, .012, 1.2 + q(), 3); g.rotateZ((q() - .5) * 2); g.rotateX((q() - .5) * 1.5); g.translate((q() - .5) * 3, .7, (q() - .5) * 2); put(CM.rust, g); }
+  const g = mergedGroup(parts); g.position.set(x, hC(x, z), z); G.scene.add(g); return g;
+}
+// a tunnel shaft opened in a yard: a square hole with a cast concrete collar and dug-out sand around it
+export function tunnelMouth(x, z) {
+  const { parts, put } = partsBag(); const y = hC(x, z);
+  for (const [w, d, px, pz] of [[1.5, .2, 0, -.65], [1.5, .2, 0, .65], [.2, 1.1, -.65, 0], [.2, 1.1, .65, 0]]) put(CM.concrete, box(w, .3, d, 1).translate(px, .12, pz));
+  put(CM.black, new THREE.PlaneGeometry(1.1, 1.1).rotateX(-Math.PI / 2).translate(0, .05, 0));
+  const m = new THREE.CylinderGeometry(1.6, 2.6, .5, 9, 1, true); m.translate(0, .1, 0); put(CM.dirt, m);
+  const g = mergedGroup(parts, false); g.position.set(x, y, z); G.scene.add(g); return g;
+}
+// an ambulance of the coordinated medical evacuation: the white SUV model with a red band, a light bar and no flag
+export function ambulance() {
+  const o = civCar('suv', '#f2f0ea'); if (!o) return null; o.remove(o.children[1]);
+  // white paint, not the model's metallic finish (which reads near black against the pale sky in this light)
+  o.traverse(c => { if (c.isMesh && c.material.metalness > .2) { c.material.metalness = .15; c.material.roughness = Math.max(.45, c.material.roughness); } });
+  const { parts, put } = partsBag(); put(CM.cloth[0], box(1.95, .16, 4.0, 1).translate(0, .95, 0)); put(CM.cloth[0], box(.5, .1, .25, 1).translate(0, 1.82, .4)); put(CM.cloth[1], box(.5, .1, .25, 1).translate(0, 1.82, .1));
+  const g = mergedGroup(parts); G.scene.remove(g); o.add(g); (G.hotObjects || (G.hotObjects = [])).push(o); return o;
+}
+// a wheelchair pushed down the road, loaded with bundles: people moved their old and their belongings on anything with wheels
+export function makeChair(q) {
+  const { parts, put } = partsBag();
+  const wg = new THREE.TorusGeometry(.3, .025, 4, 12); wg.rotateY(Math.PI / 2); for (const s of [-1, 1]) put(CM.steelDark, wg.clone().translate(s * .3, .3, -.12));
+  for (const s of [-1, 1]) { put(CM.steelDark, new THREE.CylinderGeometry(.015, .015, .9, 4).translate(s * .24, .55, -.22)); put(CM.steelDark, new THREE.CylinderGeometry(.07, .07, .04, 6).rotateZ(Math.PI / 2).translate(s * .2, .07, .32)); }
+  put(CM.cloth[1], box(.46, .05, .42, 1).translate(0, .5, 0)); put(CM.cloth[1], box(.46, .42, .04, 1).translate(0, .75, -.22));
+  for (let i = 0; i < 2 + Math.floor(q() * 2); i++) put(CM.cloth[1], box(.34 + q() * .12, .2 + q() * .12, .3, 1).translate((q() - .5) * .1, .62 + i * .18, (q() - .5) * .08));
+  const g = mergedGroup(parts, false); G.scene.add(g); return g;
+}
+// an abandoned bag on the asphalt (the suspicious-object drill)
+export function makeBag() { const { parts, put } = partsBag(); put(CM.cloth[3], box(.55, .34, .3, 1).translate(0, .17, 0)); put(CM.black, box(.5, .03, .05, 1).translate(0, .36, 0)); const g = mergedGroup(parts); G.scene.add(g); return g; }

@@ -27,7 +27,7 @@ import { Crowd } from './crowd.js';
 import { Tablet } from './tablet.js';
 import { CorridorMission, CSTAGES } from './mission.js';
 import { Gear } from './gear.js';
-import { CorridorSound } from './sound.js';
+import { CorridorSound, stopVoice } from './sound.js';
 import { Command } from './command.js';
 import { bakeVolume, bakeSunShadow, occluderFrom, GIU } from '../gi.js';
 import { AutoExposure, EXPOSURE_GLSL, GRADE, GRADE_GLSL, GRADE_U, TONE_GLSL, TONE_U, installToneMapping } from '../exposure.js';
@@ -37,7 +37,7 @@ import { UpscalePass, DynRes } from '../resolution.js';
 
 const $ = id => document.getElementById(id);
 // build number in the menu and the pause card: tells a play-tester which version (and not a cached older script) is running
-const BUILD = 24; $('build').textContent = '· גרסה ' + BUILD;
+const BUILD = 25; $('build').textContent = '· גרסה ' + BUILD;
 const canvas = $('c');
 function err(msg) { const e = $('err'); e.hidden = false; e.textContent = msg; }
 addEventListener('error', e => { if (e.message) err('שגיאה בטעינת המשחק: ' + e.message); });
@@ -271,10 +271,10 @@ $('bstart').addEventListener('click', startBriefing);
 $('bgo').addEventListener('click', () => startMission());
 $('bskip').addEventListener('click', () => startMission());
 $('bresume').addEventListener('click', () => pause(false));
-$('brestart').addEventListener('click', () => { location.hash = '#retry'; location.reload(); });
-$('bquit').addEventListener('click', () => { location.hash = ''; location.reload(); });
-$('bretry').addEventListener('click', () => { location.hash = '#retry'; location.reload(); });
-$('bagain').addEventListener('click', () => { location.hash = ''; location.reload(); });
+$('brestart').addEventListener('click', () => { stopVoice(); location.hash = '#retry'; location.reload(); });
+$('bquit').addEventListener('click', () => { stopVoice(); location.hash = ''; location.reload(); });
+$('bretry').addEventListener('click', () => { stopVoice(); location.hash = '#retry'; location.reload(); });
+$('bagain').addEventListener('click', () => { stopVoice(); location.hash = ''; location.reload(); });
 $('bhist').addEventListener('click', () => { $('hist').hidden = false; });
 $('bhistclose').addEventListener('click', () => { $('hist').hidden = true; });
 $('bpause').addEventListener('click', () => pause(true));
@@ -289,8 +289,9 @@ bus.on('key', k => { if (k === 'KeyP') pause(G.state !== 'paused');
   // with a free cursor (commanding) Esc pauses directly, unless it is closing the tablet or cancelling an aim
   if (k === 'Escape' && !G.isTouch) { if (G.state === 'paused') pause(false); else if (G.freeCursor && G.state === 'play' && !(G.tablet && G.tablet.open) && !(G.command && (G.command.aim || G.command.introOn))) pause(true); } });
 document.addEventListener('visibilitychange', () => { if (document.hidden) pause(true); });
-bus.on('missionFailed', reason => { G.tablet && G.tablet.close(); $('failtxt').innerHTML = reason; setTimeout(() => { $('fail').hidden = false; document.exitPointerLock && document.exitPointerLock(); }, 1400); G.ui.fadeTo(.75, 1.2); G.state = 'end'; });
+bus.on('missionFailed', reason => { stopVoice(); G.mission.strikeClose && G.mission.strikeClose(); G.tablet && G.tablet.close(); $('failtxt').innerHTML = reason; setTimeout(() => { $('fail').hidden = false; document.exitPointerLock && document.exitPointerLock(); }, 1400); G.ui.fadeTo(.75, 1.2); G.state = 'end'; });
 bus.on('missionComplete', res => {
+  stopVoice();
   G.tablet && G.tablet.close(); G.state = 'end'; $('hud').hidden = true; document.exitPointerLock && document.exitPointerLock();
   G.mission.fillEnd(res); $('end').hidden = false;
 });

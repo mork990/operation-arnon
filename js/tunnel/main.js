@@ -25,6 +25,8 @@ import { buildTunnelWorld, updateWorld, setThermal, hT, TL } from './world.js';
 import { Tablet } from './tablet.js';
 import { TunnelMission, TSTAGES, TSPEAKERS } from './mission.js';
 import { Command } from './command.js';
+import { Feeds } from './shaft.js';
+import { speak, stopVoice } from '../voice.js';
 import { bakeVolume, bakeSunShadow, occluderFrom, GIU } from '../gi.js';
 import { AutoExposure, EXPOSURE_GLSL, GRADE, GRADE_GLSL, GRADE_U, TONE_GLSL, TONE_U, installToneMapping } from '../exposure.js';
 import { WIND } from '../materials.js';
@@ -33,14 +35,16 @@ import { UpscalePass, DynRes } from '../resolution.js';
 
 const $ = id => document.getElementById(id);
 // build number in the menu and the pause card: tells a play-tester which version (and not a cached older script) is running
-const BUILD = 24; $('build').textContent = '· גרסה ' + BUILD;
+const BUILD = 25; $('build').textContent = '· גרסה ' + BUILD;
 const canvas = $('c');
 function err(msg) { const e = $('err'); e.hidden = false; e.textContent = msg; }
 addEventListener('error', e => { if (e.message) err('שגיאה בטעינת המשחק: ' + e.message); });
 addEventListener('unhandledrejection', e => { err('שגיאה בטעינת המשחק: ' + (e.reason && e.reason.message || e.reason)); });
 
 // no recorded voice here: radio lines are subtitles (mission.js adds them to VO as they are spoken)
-for (const k of Object.keys(VO)) delete VO[k]; Object.assign(SPEAKERS, TSPEAKERS); G.settings.voice = false;
+// spoken lines come from voice.js (see say in mission.js); G.settings.voice is the menu's narration switch
+for (const k of Object.keys(VO)) delete VO[k]; Object.assign(SPEAKERS, TSPEAKERS);
+try { const v = localStorage.getItem('tunnel-voice'); if (v !== null) G.settings.voice = v === '1'; } catch (e) {}
 // no target building here
 Object.assign(B, { x0: 1e9, x1: 1e9 + 1, z0: 1e9, z1: 1e9 + 1, lights: [], blockers: [] });
 G.groundFn = hT;
@@ -115,10 +119,20 @@ Object.assign(grade.uniforms, autoExp.uniforms, sunFx.uniforms, GRADE_U, TONE_U)
 Object.assign(GRADE, { con: 1.08, sat: .9, warm: [1.1, .98, .84], cool: [.9, .97, 1.08], roll: .2 });
 autoExp.uniforms.uEvBias.value = .8; // dawn should read as early light, not be metered up to midday
 // drone feed look: EO (washed, grainy, slightly soft) or IR white-hot (people rendered as hot silhouettes, see Crowd/Tablet)
-const uav = G.uavPass = new ShaderPass({ uniforms: { tDiffuse: { value: null }, uT: { value: 0 }, uIR: { value: 0 }, uTx: { value: new THREE.Vector2(1 / 1280, 1 / 720) } },
+// mode 2: the robot's night-vision camera (green phosphor, heavy grain, scan lines); mode 3: a helmet camera (cheap
+// wide-angle sensor: low resolution, crushed and desaturated toward grey-green, block noise, a dark rounded frame)
+const uav = G.uavPass = new ShaderPass({ uniforms: { tDiffuse: { value: null }, uT: { value: 0 }, uIR: { value: 0 }, uMode: { value: 0 }, uRes: { value: new THREE.Vector2(1280, 720) }, uTx: { value: new THREE.Vector2(1 / 1280, 1 / 720) } },
   vertexShader: `varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
-  fragmentShader: `uniform sampler2D tDiffuse;uniform float uT,uIR;uniform vec2 uTx;varying vec2 vUv;float h(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}
-  void main(){vec2 u=vUv;float jit=(h(vec2(floor(u.y*240.),uT))-.5)*.0006;u.x+=jit;
+  fragmentShader: `uniform sampler2D tDiffuse;uniform float uT,uIR,uMode;uniform vec2 uTx,uRes;varying vec2 vUv;float h(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}
+  void main(){
+    if(uMode>2.5){vec2 d0=vUv-.5;vec2 u=vUv-d0*dot(d0,d0)*.12;vec2 px=vec2(640.,360.);vec2 uq=(floor(u*px)+.5)/px;vec3 c=texture2D(tDiffuse,uq).rgb;
+      float l=dot(c,vec3(.299,.587,.114));c=mix(vec3(l),c,.35)*vec3(.92,1.02,.94);c=pow(clamp(c,0.,1.),vec3(1.15))*1.12;
+      vec2 bq=floor(u*px/8.);c+=(h(bq+floor(uT*12.))-.5)*.035+(h(u*vec2(733.,511.)+fract(uT*13.))-.5)*.06;
+      float r=length(d0*vec2(1.6,1.));c*=1.-smoothstep(.62,.86,r);gl_FragColor=vec4(clamp(c,0.,1.),1.);return;}
+    if(uMode>1.5){vec2 d0=vUv-.5;vec3 c=texture2D(tDiffuse,vUv).rgb;float l=dot(c,vec3(.299,.587,.114));l=pow(clamp(l*1.1,0.,1.),.9);
+      l+=(h(vUv*vec2(1234.,987.)+fract(uT*9.))-.5)*.16;l*=.9+.1*sin(vUv.y*uRes.y*1.6);l*=1.-smoothstep(.36,.62,length(d0*vec2(1.5,1.)));
+      gl_FragColor=vec4(clamp(vec3(.22,1.,.38)*l+vec3(.0,.03,.0),0.,1.),1.);return;}
+    vec2 u=vUv;float jit=(h(vec2(floor(u.y*240.),uT))-.5)*.0006;u.x+=jit;
     vec3 c=texture2D(tDiffuse,u).rgb*.5+(texture2D(tDiffuse,u+vec2(uTx.x,0.)).rgb+texture2D(tDiffuse,u-vec2(uTx.x,0.)).rgb+texture2D(tDiffuse,u+vec2(0.,uTx.y)).rgb+texture2D(tDiffuse,u-vec2(0.,uTx.y)).rgb)*.125;
     float l=dot(c,vec3(.299,.587,.114));
     if(uIR>.5){ // white-hot: people, engines and heat leaks bright; at dawn the ground has cooled, so the rest stays dark
@@ -164,12 +178,14 @@ function resize() {
   upscale.enabled = internalPR() < displayPR() * .98; upscale.uniforms.uSharp.value = G.quality === 2 ? .6 : .45;
   camera.aspect = w / h; G.fovBase0 = w < h ? 66 : (w / h > 1.9 ? 50 : 54); G.player && (G.player.fovBase = G.fovBase0); camera.updateProjectionMatrix();
   if (G.drone) { G.drone.cam.aspect = w / h; G.drone.cam.updateProjectionMatrix(); }
+  if (G.feeds) for (const c of [G.feeds.bodyCam, G.feeds.robotCam, G.feeds.under.cam]) { c.aspect = w / h; c.updateProjectionMatrix(); }
+  uav.uniforms.uRes.value.set(w, h);
   if (G.weapon) G.weapon.resize(w / h);
   { const pr = internalPR(); if (fxaa) fxaa.material.uniforms.resolution.value.set(1 / (w * pr), 1 / (h * pr)); grade.uniforms.uTx.value.set(1 / (w * pr), 1 / (h * pr)); uav.uniforms.uTx.value.set(1 / (w * pr), 1 / (h * pr)); grade.uniforms.uAspect.value = w / h; if (smaa) smaa.setSize(w * pr, h * pr); }
   if (G.fx) G.fx.setScale(h * internalPR() / (2 * Math.tan(THREE.MathUtils.degToRad(activeCam().fov / 2))));
 }
 addEventListener('resize', resize);
-function activeCam() { return G.drone && G.drone.active ? G.drone.cam : camera; }
+function activeCam() { if (G.drone && G.drone.active) return G.drone.cam; const fv = feedView(); return fv ? fv.cam : camera; }
 
 // ---------- boot ----------
 async function boot() {
@@ -180,7 +196,8 @@ async function boot() {
     models: ['m4', 'ak'], anims: ['anims_fence.json'], vo: 'snd/vehicle_engine_godot_truck_town.mp3', banks: [],
     sounds: ['radio_static_doty21_cc0', 'vehicle_engine_godot_truck_town'],
   });
-  if (A.late) A.late.then(() => { A.snd.vo = null; });
+  // the recorded-voice bank never plays here (audio.js would play whatever buffer stands in for it)
+  A.snd.vo = null; if (A.late) A.late.then(() => { A.snd.vo = null; });
   $('loadtxt').textContent = 'בונה את השכונה…'; await new Promise(r => setTimeout(r, 30));
   const pm = new THREE.PMREMGenerator(renderer); scene.environment = pm.fromEquirectangular(A.hdr).texture; scene.environmentIntensity = .7;
   A.hdr.colorSpace = THREE.LinearSRGBColorSpace; scene.background = null;
@@ -219,7 +236,7 @@ void main(){ vec3 d = normalize(vDir); float a = atan(d.z, d.x) + uRot; vec2 uv 
   G.fx = new FX(); G.player = new Player(); G.weapon = new Weapon(); G.ui = new UI(); G.guide = new Guide(TSTAGES);
   // the commander carries no weapon here: a free cursor for the buttons, drag to look, the rifle never drawn
   G.freeCursor = true; document.body.classList.add('cmdmode');
-  G.tablet = new Tablet(); G.mission = new TunnelMission(); G.command = new Command();
+  G.tablet = new Tablet(); G.mission = new TunnelMission(); G.command = new Command(); G.feeds = new Feeds();
   // GTAO from the main pass's depth: its own normal pre-pass re-rendered every mesh (half of all draw calls). The
   // composer's buffers swap an odd number of times per frame, so follow whichever one holds this frame's scene.
   class GTAOFromDepth extends GTAOPass { render(r, w, rb, dt, m) { const d = rb.depthTexture; G.sceneDepth = d; if (d && this.gtaoMaterial.uniforms.tDepth.value !== d) { this.gtaoMaterial.uniforms.tDepth.value = d; this.pdMaterial.uniforms.tDepth.value = d; } super.render(r, w, rb, dt, m); } }
@@ -233,6 +250,12 @@ void main(){ vec3 d = normalize(vDir); float a = atan(d.z, d.x) + uRot; vec2 uv 
   vmPass = new VMPass(G.weapon.scene, G.weapon.cam); vmPass.clear = false; vmPass.clearDepth = false; composer.addPass(vmPass);
   composer.addPass(bloom); composer.addPass(grade); composer.addPass(uav); outPass = new OutputPass(); composer.addPass(outPass); fxaa = new ShaderPass(FXAAShader); composer.addPass(fxaa); smaa = new SMAAPass(innerWidth, innerHeight); composer.addPass(smaa); composer.addPass(upscale);
   initInput(canvas);
+  // phones: the commander stands at his vehicle, so there is no walk stick; a drag anywhere turns the view (a layer
+  // over ui.js's look zone, which would start the stick on the left half of the screen)
+  { const cl = $('cmdlook'); let id = null, lx = 0, ly = 0; const look = (dx, dy) => { const k = 1.55 * (1 + Math.min(1.6, Math.hypot(dx, dy) * .045)); Input.mdx += dx * k; Input.mdy += dy * k; };
+    cl.addEventListener('touchstart', e => { const t = e.changedTouches[0]; if (id === null) { id = t.identifier; lx = t.clientX; ly = t.clientY; } e.preventDefault(); }, { passive: false });
+    cl.addEventListener('touchmove', e => { for (const t of e.changedTouches) if (t.identifier === id) { look(t.clientX - lx, t.clientY - ly); lx = t.clientX; ly = t.clientY; } e.preventDefault(); }, { passive: false });
+    const end = e => { for (const t of e.changedTouches) if (t.identifier === id) id = null; }; cl.addEventListener('touchend', end); cl.addEventListener('touchcancel', end); }
   let q = G.isTouch ? 1 : 2; try { const s = localStorage.getItem('tunnel-q'); if (s !== null) q = +s; } catch (e) {}
   applyQuality(q);
   // title backdrop: from the command vehicle's rise, looking west over the grove at the first houses
@@ -265,9 +288,9 @@ $('bstart').addEventListener('click', startBriefing);
 $('bgo').addEventListener('click', () => startMission());
 $('bskip').addEventListener('click', () => startMission());
 $('bresume').addEventListener('click', () => pause(false));
-$('brestart').addEventListener('click', () => { location.hash = '#retry'; location.reload(); });
+$('brestart').addEventListener('click', () => { stopVoice(); location.hash = '#retry'; location.reload(); });
 $('bquit').addEventListener('click', () => { location.hash = ''; location.reload(); });
-$('bretry').addEventListener('click', () => { location.hash = '#retry'; location.reload(); });
+$('bretry').addEventListener('click', () => { stopVoice(); location.hash = '#retry'; location.reload(); });
 $('bagain').addEventListener('click', () => { location.hash = ''; location.reload(); });
 $('bhist').addEventListener('click', () => { $('hist').hidden = false; });
 $('bhistclose').addEventListener('click', () => { $('hist').hidden = true; });
@@ -275,6 +298,7 @@ $('bpause').addEventListener('click', () => pause(true));
 document.querySelectorAll('[data-q]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); applyQuality(+b.dataset.q); }));
 $('sens').addEventListener('input', e => { G.settings.sens = +e.target.value; });
 $('subs').addEventListener('change', e => { G.settings.subtitles = e.target.checked; });
+$('voice').checked = G.settings.voice; $('voice').addEventListener('change', e => { G.settings.voice = e.target.checked; try { localStorage.setItem('tunnel-voice', e.target.checked ? '1' : '0'); } catch (er) {} if (!e.target.checked) stopVoice(); else speak('קריינות פעילה.', { who: 'radio' }); });
 function phoneFullscreen() { if (!G.isTouch) return; try { const el = document.documentElement; const p = el.requestFullscreen ? el.requestFullscreen({ navigationUI: 'hide' }) : el.webkitRequestFullscreen && el.webkitRequestFullscreen(); if (p && p.then) p.then(() => { try { screen.orientation.lock('landscape').catch(() => {}); } catch (e) {} }).catch(() => {}); } catch (e) {} }
 $('bstart').addEventListener('click', phoneFullscreen);
 bus.on('lock', l => { if (!l && !G.isTouch && !G.freeCursor && (G.state === 'play' || G.state === 'cutscene') && !(G.tablet && G.tablet.open) && !G.noPauseOnUnlock) pause(true); });
@@ -282,7 +306,7 @@ bus.on('key', k => { if (k === 'KeyP') pause(G.state !== 'paused');
   // with a free cursor (commanding) Esc pauses directly, unless it is closing the tablet or cancelling an aim
   if (k === 'Escape' && !G.isTouch) { if (G.state === 'paused') pause(false); else if (G.freeCursor && G.state === 'play' && !(G.tablet && G.tablet.open) && !(G.command && (G.command.aim || G.command.introOn))) pause(true); } });
 document.addEventListener('visibilitychange', () => { if (document.hidden) pause(true); });
-bus.on('missionFailed', reason => { G.tablet && G.tablet.close(); $('failtxt').innerHTML = reason; setTimeout(() => { $('fail').hidden = false; document.exitPointerLock && document.exitPointerLock(); }, 1400); G.ui.fadeTo(.75, 1.2); G.state = 'end'; });
+bus.on('missionFailed', reason => { stopVoice(); G.tablet && G.tablet.close(); $('failtxt').innerHTML = reason; setTimeout(() => { $('fail').hidden = false; document.exitPointerLock && document.exitPointerLock(); }, 1400); G.ui.fadeTo(.75, 1.2); G.state = 'end'; });
 bus.on('missionComplete', res => {
   G.tablet && G.tablet.close(); G.state = 'end'; $('hud').hidden = true;
   G.mission.fillEnd(res); $('end').hidden = false;
@@ -294,15 +318,21 @@ for (const ev of ['pointerdown', 'keydown', 'touchstart']) addEventListener(ev, 
 // ---------- loop ----------
 let fpsN = 0, fpsT = performance.now(), autoQ = false;
 // dynamic resolution (resolution.js): keeps ~40 fps by scaling the internal resolution, only while that actually helps
+// the tablet's feeds: the UAV (drone tab), the robot's camera and the helmet cameras (feedView); one composer for all
+function feedView() { const t = G.tablet; return t && t.open && (t.tab === 'robot' || t.tab === 'body') && G.feeds ? G.feeds.view(t.tab) : null; }
 function render() {
-  const d = G.drone && G.drone.active;
-  mainPass.camera = d ? G.drone.cam : camera; if (gtao) { gtao.camera = mainPass.camera; } sunFx.camera = mainPass.camera; sunFx.enabled = !d; if (heat) heat.enabled = !d && !!(gtao && gtao.enabled);
-  uav.enabled = !!d; uav.uniforms.uIR.value = d && G.drone.ir ? 1 : 0; uav.uniforms.uT.value = G.time;
-  if (vmPass) vmPass.enabled = !d && (G.state === 'play' || G.state === 'cutscene');
+  const d = G.drone && G.drone.active; const fv = !d && feedView();
+  mainPass.camera = d ? G.drone.cam : fv ? fv.cam : camera; mainPass.scene = fv ? fv.scene : scene; if (gtao) { gtao.camera = mainPass.camera; gtao.scene = mainPass.scene; } sunFx.camera = mainPass.camera; sunFx.enabled = !d && !fv; if (heat) heat.enabled = !d && !fv && !!(gtao && gtao.enabled);
+  const gOn = gtao ? gtao.enabled : false; if (gtao && fv && fv.under) gtao.enabled = false;
+  uav.enabled = !!d || !!fv; uav.uniforms.uMode.value = fv ? fv.mode : 0; uav.uniforms.uIR.value = d && G.drone.ir ? 1 : 0; uav.uniforms.uT.value = G.time;
+  if (fv && fv.self) G.feeds.hideSelf(true);
+  // underground the meter would push a lamp-lit shaft up to midday; hold it a little under the dawn bias
+  if (fv && fv.under) autoExp.uniforms.uEvBias.value = -1.4;
+  if (vmPass) vmPass.enabled = !d && !fv && (G.state === 'play' || G.state === 'cutscene');
   if (d) setHot(!!G.drone.ir);
   if (outPass) { outPass.enabled = uav.enabled || renderer.toneMapping !== THREE.CustomToneMapping || !!G.debug.noMerge; grade.uniforms.uOut.value = outPass.enabled ? 0 : 1; }
   composer.render();
-  if (d) setHot(false);
+  if (d) setHot(false); if (fv && fv.self) G.feeds.hideSelf(false); if (gtao) gtao.enabled = gOn; autoExp.uniforms.uEvBias.value = .8;
 }
 // thermal: people and engines drawn as plain bright surfaces, heat patches (IR-only meshes) switched on, the smoke
 // hidden (thermal sees through it); everything is put back after the feed's frame
@@ -339,16 +369,17 @@ function step(dt) {
   if (active) { tickTimers(); G.mission.update(dt); }
   else if (G.mission) G.mission.idle(dt);
   if (G.state === 'menu' || G.state === 'briefing') { G.player.yaw += Math.sin(G.time * .05) * dt * .02; }
-  G.player.update(active && !(G.tablet && G.tablet.open) ? dt : 0);
+  Input.move.set(0, 0); Input.sprint = false; G.player.update(active && !(G.tablet && G.tablet.open) ? dt : 0);
   for (let i = G.actors.length - 1; i >= 0; i--) G.actors[i] && G.actors[i].update(dt);
   // no weapon in hand: a click is an order, never a shot
   Input.fire = false; Input.ads = false; Input.adsToggle = false; G.weapon.update(dt); G.weapon.root.visible = false;
   if (G.isTouch) detailCullTick(scene, activeCam(), dt, !G.debug.noCull);
+  if (G.feeds) G.feeds.update(dt); G.viewCam = activeCam();
   G.fx.update(dt); updateWorld(dt); if (G.birds) G.birds.update(dt); WIND.t.value = G.time;
   const cam = activeCam();
   G.audio.updateListener(camera); G.audio.update(dt); G.ui.update(dt); G.guide.update(dt); G.tablet.update(dt); if (active) G.command.update(dt);
   $('cross').style.opacity = 0;
-  const cp = G.drone && G.drone.active ? G.drone.target : camera.position; const ts = (sc.right - sc.left) / sun.shadow.mapSize.x;
+  const fvc = feedView(); const cp = G.drone && G.drone.active ? G.drone.target : fvc && !fvc.under ? fvc.cam.position : camera.position; const ts = (sc.right - sc.left) / sun.shadow.mapSize.x;
   sun.target.position.set(Math.round(cp.x / ts) * ts, 0, Math.round(cp.z / ts) * ts); sun.position.copy(sun.target.position).addScaledVector(G.sunDir, 200);
   grade.uniforms.uT.value = G.time % 10;
   grade.uniforms.uHurt.value = 0; grade.uniforms.uGas.value = 0; grade.uniforms.uBino.value = 0;

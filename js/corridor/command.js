@@ -23,12 +23,14 @@ export class Command {
     this.task = null; this.pool = new Map();
     document.querySelectorAll('[data-icon]').forEach(e => { e.innerHTML = ICON[e.dataset.icon] || ''; });
     document.querySelectorAll('#cmdbar button').forEach(b => { const go = e => { e.preventDefault(); e.stopPropagation(); this.press(b.dataset.cmd); }; b.addEventListener('click', go); b.addEventListener('touchstart', go, { passive: false }); });
-    bus.on('key', k => { if (G.state !== 'play' || (G.tablet && G.tablet.open) || this.introOn) return;
-      const m = { Digit1: 'spk', Digit2: 'lane', Digit3: 'flow', Digit4: 'med', Digit5: 'cover' }[k]; if (m) this.press(m);
+    bus.on('key', k => { if (k === 'Escape' && document.body.classList.contains('scopen')) { G.mission.strikeClose(); return; } if (G.state !== 'play' || (G.tablet && G.tablet.open) || this.introOn || document.body.classList.contains('scopen')) return;
+      const m = { Digit1: 'spk', Digit2: 'lane', Digit3: 'flow', Digit4: 'med', Digit5: 'cover', Digit6: 'forces' }[k]; if (m) this.press(m);
       if ((k === 'Enter' || k === 'KeyF') && this.task && this.task.acts[0]) this.runAct(0); if (k === 'KeyG' && this.task && this.task.acts[1]) this.runAct(1); });
     const cv = $('c');
     cv.addEventListener('wheel', e => { if (!G.freeCursor || G.state !== 'play' || (G.gear && G.gear.bino)) return; e.preventDefault(); this.zoom = clamp((this.zoom || 1) * (e.deltaY > 0 ? 1 / 1.2 : 1.2), 1, 3.6); }, { passive: false });
     $('bIntro').addEventListener('click', () => this.closeIntro());
+    $('scGo').addEventListener('click', e => { e.stopPropagation(); this.say(G.mission.strikeGo()); });
+    $('scNo').addEventListener('click', e => { e.stopPropagation(); G.mission.strikeClose(); });
   }
   intro(done) { this.introOn = true; this._introDone = done; $('intro').hidden = false; G.freeCursor = true; }
   closeIntro() { if (!this.introOn) return; this.introOn = false; $('intro').hidden = true; const f = this._introDone; this._introDone = null; f && f(); }
@@ -40,6 +42,7 @@ export class Command {
     if (cmd === 'flow') return this.say(M.order('cp', 'flow'));
     if (cmd === 'med') return this.say(M.order('med'));
     if (cmd === 'cover') return this.say(M.cover());
+    if (cmd === 'forces') return G.tablet.show('forces');
   }
   say(r) { if (typeof r === 'string') G.ui.toast(r); }
   // the old gas-aiming API is gone in this mission; the tablet calls endAim when it opens

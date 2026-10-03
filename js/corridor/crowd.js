@@ -242,7 +242,7 @@ export class Crowd {
     return best;
   }
   promote(a, kind = 'civ') {
-    if (!a.alive) return null; a.alive = false; this.unqueue(a); const L = this.looks[a.look];
+    if (!a.alive) return null; a.alive = false; for (const k of ['cart', 'chair']) if (a[k]) { G.scene.remove(a[k]); a[k] = null; } this.unqueue(a); const L = this.looks[a.look];
     const act = new Actor(L.m, kind, new THREE.Vector3(a.x, a.y, a.z), a.yaw, {}); act.root.scale.setScalar(a.scale); act.fromCrowd = a; act.crowdLook = a.look; act.kid = a.kid;
     return act;
   }
@@ -251,7 +251,7 @@ export class Crowd {
   // into the funnel and up the road as a widening blob. The slot table holds every queue position for one lane setup.
   initQueue() {
     this.lanes = [{ x: CL.laneA, open: true, q: [], t: 0 }, { x: CL.laneB, open: false, q: [], t: 0 }];
-    this.flow = 'open'; this.hold = false; this.shelter = false; this.press = 0; this._slots = {};
+    this.flow = 'open'; this.hold = false; this.shelter = false; this.press = 0; this._slots = {}; this.rateMul = 1;
   }
   slots(li) {
     const both = this.lanes[1].open, key = li + (both ? 'b' : 's'); if (this._slots[key]) return this._slots[key];
@@ -277,7 +277,7 @@ export class Crowd {
   queueLen() { return this.lanes[0].q.length + this.lanes[1].q.length; }
   backZ(L) { const s = this.slots(this.lanes.indexOf(L)); const p = s[Math.min(s.length - 1, L.q.length)]; return p[1]; }
   updateQueue(dt) {
-    const period = this.flow === 'slow' ? 2.1 : .95;
+    const period = (this.flow === 'slow' ? 2.1 : .95) * (this.rateMul || 1); // rateMul: military police reinforcing the screeners
     for (const L of this.lanes) {
       const s = this.slots(this.lanes.indexOf(L));
       L.q.forEach((a, i) => { const p = s[Math.min(i, s.length - 1)]; a.tx = p[0] + a.jx; a.tz = p[1] + a.jz; });
@@ -339,8 +339,9 @@ export class Crowd {
   brain(a, dt) {
     const goTo = (tx, tz, speed) => { const dx = tx - a.x, dz = tz - a.z; const d = Math.hypot(dx, dz); if (d < .3) { a.sp = lerp(a.sp, 0, Math.min(1, dt * 6)); return true; } a.sp = lerp(a.sp, Math.min(speed, d * 1.5 + .2), Math.min(1, dt * 3)); a.x += dx / d * a.sp * dt; a.z += dz / d * a.sp * dt; a.yawT = Math.atan2(dx, dz); return false; };
     if (this.shelter && a.state !== 'shelter' && a.state !== 'south' && a.z < 8 && a.z > -160) { a.prev = a.state; a.state = 'shelter';
-      // in the lanes: crouch where they stand, behind the barriers; on the open road: run for the east verge
-      if (a.prev === 'queue') { a.tx = a.x; a.tz = a.z; } else { a.tx = rr(11.5, 15.5); a.tz = a.z + rr(-4, 6); } }
+      // in the lanes and past the checkpoint: crouch where they stand (behind the barriers, never out onto the berm's
+      // foot under the command post); on the open road north of the funnel: run for the east verge
+      if (a.prev === 'queue' || a.z > CL.funnelZ - 3) { a.tx = clamp(a.x, -CL.road + 1, CL.road - 1); a.tz = a.z; } else { a.tx = rr(11.5, 15.5); a.tz = a.z + rr(-4, 2); } }
     switch (a.state) {
       case 'flow': {
         const L = this.lanes; const holdZ = CL.hold;
@@ -363,6 +364,7 @@ export class Crowd {
       default: a.sp = lerp(a.sp, 0, dt * 5);
     }
     if (a.cart) { const c = a.cart, s = Math.sin(a.yaw), co = Math.cos(a.yaw); c.position.set(a.x + s * (a.donkey ? 2.6 : 1.4), a.y, a.z + co * (a.donkey ? 2.6 : 1.4)); c.rotation.y = a.yaw + (a.donkey ? 0 : Math.PI); if (!a.alive) { G.scene.remove(c); a.cart = null; } }
+    if (a.chair) { const c = a.chair; c.position.set(a.x + Math.sin(a.yaw) * .75, a.y, a.z + Math.cos(a.yaw) * .75); c.rotation.y = a.yaw; if (!a.alive) { G.scene.remove(c); a.chair = null; } }
   }
   alive() { return this.agents.filter(a => a.alive); }
   near(x, z, r) { return this.agents.filter(a => a.alive && (a.x - x) ** 2 + (a.z - z) ** 2 < r * r); }

@@ -89,7 +89,7 @@ export class Tablet {
     if (o.role === 'suspect' && !o.identified) acts.push({ l: job ? 'מזהה…' : 'זהה (תצפית)', c: 'go', dis: job, f: () => M.identify0(o) });
     if (!o.friendly && o.role !== 'sniper' && o.role !== 'sheltering' && !o.detained) acts.push({ l: o.flagged ? 'מסומן לעיכוב' : 'סמן לעיכוב במחסום', c: o.identified && o.armed ? 'go' : '', dis: !!o.flagged, f: () => M.flag(o) });
     if (!o.friendly && (o.role === 'old' || o.hurt) && !o.cared) acts.push({ l: 'שלח חובשים', c: 'go', dis: M.U.med.busy, f: () => M.sendMedics(o) });
-    acts.push({ l: `תקיפת כטב״ם (${M.U.uav.shots})`, c: 'danger', dis: M.U.uav.shots <= 0, f: () => M.uavStrike(o) });
+    acts.push({ l: 'כרטיס תקיפה', c: 'danger', f: () => M.strikeCard(o) });
     acts.push({ l: 'בטל סימון', f: () => { this.marks = this.marks.filter(x => x !== m); if (G.drone.track === o) G.drone.track = null; this.select(null); } });
     const box = $('tgtActs'); box.innerHTML = ''; for (const a of acts) { const b = document.createElement('button'); b.textContent = a.l; if (a.c) b.className = a.c; b.disabled = !!a.dis || !alive; b.onclick = e => { e.stopPropagation(); const r = a.f(); if (typeof r === 'string') this.flash(r); setTimeout(() => this.renderTarget(), 50); }; box.appendChild(b); }
   }
@@ -121,8 +121,16 @@ export class Tablet {
     for (const id of ['apcA', 'apcB', 'tank']) { const u = U[id], S = M.armourSpots(id); const acts = Object.entries(S).map(([k, v]) => ({ l: v.label, dis: !!u.drive || u.pos === k, f: () => M.moveArmour(id, k) }));
       if (id === 'apcA') acts.push({ l: `מסך עשן לקו האש (${u.smoke})`, c: 'go', dis: u.smoke <= 0 || !M.firing || M.covered, f: () => M.cover() });
       card(u, u.drive ? 'בתנועה…' : S[u.pos].label, acts); }
-    const uav = U.uav; card(uav, `${uav.shots} חימושים${uav.cd > 0 ? ` · בדרך (${Math.ceil(uav.cd)} ש׳)` : ' · מעל המסדרון'}`, [{ l: 'תקוף את היעד המסומן', c: 'danger', dis: uav.shots <= 0 || !this.sel, f: () => M.uavStrike(this.selected()) }]);
-    const air = U.air; card(air, air.busy ? 'הבקשה בטיפול באוגדה…' : 'דרך האוגדה · כדקה', [{ l: 'תקיפה בבניין הצלף', c: 'danger', dis: air.busy || !M.firing, f: () => M.airRequest('bldg') }, { l: 'תקיפה בשטח ההריסות', c: 'danger', dis: air.busy, f: () => M.airRequest('field') }]);
+    const inf = U.inf, T = M.threats || {}; card(inf, inf.busy ? 'במשימה…' : 'מוכן ליד נמ״ר ב׳', [
+      { l: 'ליווי שיירת הפינוי', c: 'go', dis: inf.busy || !M.convoy || M.block || M.convoy.st === 'moving' || M.convoy.st === 'done', f: () => M.convoyGo(true) },
+      { l: 'סריקת הפיר', dis: inf.busy || !M.tunnel || M.tunnel.st !== 'open', f: () => M.tunnelSearch() } ]);
+    const eng = U.eng; card(eng, eng.busy ? 'הרובוט בשטח…' : 'מוכן · רובוט', [{ l: 'בדיקת התיק החשוד', c: 'go', dis: eng.busy || !M.bag || M.bag.st === 'done' || M.bag.st === 'cordon', f: () => M.bagRespond() }]);
+    const d9 = U.d9; card(d9, d9.busy ? 'בעבודה…' : 'מוכן בשוליים המזרחיים', [{ l: 'פינוי ההריסות מנתיב הרכבים', c: 'go', dis: d9.busy || !M.block, f: () => M.d9Clear() }, { l: 'אטימת הפיר', dis: d9.busy || !M.tunnel || M.tunnel.st !== 'secured', f: () => M.tunnelSeal() }]);
+    const mp = U.mp; card(mp, mp.on ? 'מתגברים את הבודקים · קצב +25%' : mp.busy ? 'בדרך למחסום…' : 'בעורף', [{ l: 'תגבור הבודקים', c: 'go', dis: mp.on || mp.busy, f: () => M.mpReinforce() }]);
+    const mo = U.mor; card(mo, `${mo.ammo} מטחי עשן${mo.busy ? ' · באוויר' : ''}`, [{ l: 'עשן בין בניין הצלף לכביש', dis: mo.busy || mo.ammo <= 0, f: () => M.mortarSmoke(V3(CL.sniper.x + 14, 0, CL.sniper.z + 22), 'בין בניין הצלף לכביש') }, { l: 'עשן בנקודה…', dis: mo.busy || mo.ammo <= 0, f: () => this.startPick('בחר נקודה לעשן', p => { const r = M.mortarSmoke(p); if (typeof r === 'string') this.flash(r); }) }]);
+    const tgt = this.selected() || (M.rpgAlive().length && !M.rpgOut ? M.rpgAlive()[0] : null) || (M.mortarTeam && M.mortarTeam.alive ? M.mortarTeam : null) || (M.firing && M.sniper && M.sniper.alive ? M.sniper : null);
+    const sc = document.createElement('div'); sc.className = 'ucard strike'; sc.innerHTML = `<h4>תקיפה<small>כטב״ם ${U.uav.shots} · מרכבה · מסוק ${U.heli.used ? 0 : 1} · חיל האוויר</small></h4><div class="st">כל תקיפה עוברת כרטיס מידתיות ובדיקת יועמ״ש. אזרחים אינם יעד.</div>`;
+    const sa = document.createElement('div'); sa.className = 'acts'; const sb = document.createElement('button'); sb.className = 'danger'; sb.textContent = tgt ? `כרטיס תקיפה: ${M.strikeInfo(tgt).name}` : 'סמן יעד ברחפן'; sb.disabled = !tgt; sb.onclick = () => { const r = M.strikeCard(tgt); if (typeof r === 'string') this.flash(r); }; sa.appendChild(sb); sc.appendChild(sa); box.appendChild(sc);
   }
   resizeMap() { const c = $('tmap'); const r = c.getBoundingClientRect(); const s = Math.min(2, devicePixelRatio || 1); c.width = Math.max(10, Math.round(r.width * s)); c.height = Math.max(10, Math.round(r.height * s)); }
   update(dt) {
