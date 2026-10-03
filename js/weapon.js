@@ -77,19 +77,47 @@ function edgeData(geo, scale, openConvex) {
 // plastic. A fine twill of ripstop in the normal (from the texture coordinates, so it follows the cloth), slightly
 // dusty high points and a matte finish give the fabric its tooth. A film of sand dust greys the olive, and loose fibres
 // catch light at grazing angles (the soft rim that tells cloth from painted plastic).
-function armFabric(mat) {
+// The stock model has bare olive hands; IDF assaulters wear tactical gloves, so the hands become one in the shader:
+// a dark synthetic back with a moulded knuckle guard, a tan synthetic-suede palm with a raised grip-dot print, stitched
+// seams down the finger sides and a hook-and-loop wrist strap. Below the cuff the sleeve gathers into soft folds where
+// the cloth bunches at the wrist. All of it is placed in the bind pose (aVm: metres from the wrist joint along the arm,
+// plus the hand's skin weight; the bind position and normal for the rest: Z up, palms down), so it moves with the
+// skin instead of swimming. kn: how far the knuckles sit past the wrist joint.
+function armFabric(mat, kn = .085) {
+  const K = kn.toFixed(4);
   mat.onBeforeCompile = sh => {
-    sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
-{ vec2 fu = vMapUv * vec2(260., 260.); float wx = sin(fu.x + sin(fu.y * .5) * .6), wy = sin(fu.y * 1.07 + fu.x * .15);
-  float grid = step(.97, fract(vMapUv.x * 40.)) + step(.97, fract(vMapUv.y * 40.));    // ripstop reinforcement grid
-  vec3 bump = vec3(cos(fu.x) * .12 + grid * .15, cos(fu.y * 1.07) * .12 + grid * .15, 0.);
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec2 aVm; varying vec4 vVm; varying vec3 vBn;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvVm = vec4(aVm.x, position.yz, aVm.y); vBn = normal;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
+varying vec4 vVm; varying vec3 vBn;
+vec3 armBump(vec3 N, float h) { vec3 sp = -vViewPosition, sx = dFdx(sp), sy = dFdy(sp), r1 = cross(sy, N), r2 = cross(N, sx); float det = dot(sx, r1);
+  return normalize(abs(det) * N - sign(det) * (dFdx(h) * r1 + dFdy(h) * r2)); }`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+{ float u = vVm.x; vec3 bn = normalize(vBn);
+  glove = max(smoothstep(.3, .7, vVm.w), smoothstep(-.032, -.022, u));
+  float palm = smoothstep(.15, -.35, bn.z), back = smoothstep(-.1, .45, bn.z);
+  strap = smoothstep(-.032, -.028, u) * (1. - smoothstep(-.01, -.006, u)) * back;
+  knuck = smoothstep(${K} - .032, ${K} - .02, u) * (1. - smoothstep(${K} + .008, ${K} + .02, u)) * back * (.75 + .25 * abs(sin(vVm.y * 160.)));
+  float seam = (1. - smoothstep(.03, .1, abs(bn.z))) * smoothstep(${K} - .02, ${K}, u);
+  vec2 gd = fract(vec2(u * 1.3, vVm.y) * 240.) - .5; dots = (1. - smoothstep(.16, .3, length(gd))) * palm * smoothstep(-.015, .0, u);
+  palmK = palm;
+  float fz = (1. - smoothstep(-.04, -.026, u)) * (.45 + .55 * smoothstep(-.2, -.05, u));
+  float fold = sin(u * 150. + sin(vVm.y * 55. + vVm.z * 40.) * 2.4 + sin(u * 31.) * 1.6) * .6 + sin(u * 48. + vVm.y * 70. - vVm.z * 35.) * .4;
+  float h = fold * .0048 * fz + dots * .0005 + knuck * .0028 + strap * (.0008 + .0003 * sin(u * 900.)) - seam * .0007 * glove;
+  vec2 fu = vMapUv * vec2(260., 260.); float wx = sin(fu.x + sin(fu.y * .5) * .6), wy = sin(fu.y * 1.07 + fu.x * .15);
+  float grid = step(.97, fract(vMapUv.x * 40.)) + step(.97, fract(vMapUv.y * 40.));
+  vec3 bump = vec3(cos(fu.x) * .12 + grid * .15, cos(fu.y * 1.07) * .12 + grid * .15, 0.) * (1. - glove);
   normal = normalize(normal + (bump.x * normalize(dFdx(-vViewPosition)) + bump.y * normalize(dFdy(-vViewPosition))) * .35);
-  fabricHi = wx * wy; }`)
-      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = clamp(roughnessFactor + .05, 0., 1.);')
-      .replace('#include <lights_physical_fragment>', 'diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.3, .27, .22), .07) * (1. + fabricHi * .05 + pow(1. - clamp(dot(normal, normalize(vViewPosition)), 0., 1.), 3.) * .25);\n#include <lights_physical_fragment>')
-      .replace('void main() {', 'float fabricHi = 0.;\nvoid main() {');
+  normal = armBump(normal, h);
+  fabricHi = wx * wy * (1. - glove) + fold * fz * .5;
+  roughnessFactor = mix(clamp(roughnessFactor + .05, 0., 1.), mix(mix(.6, .86, palm), .42, knuck), glove); }`)
+      .replace('#include <lights_physical_fragment>', `diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.3, .27, .22), .07) * (1. + fabricHi * .05 + pow(1. - clamp(dot(normal, normalize(vViewPosition)), 0., 1.), 3.) * .25);
+{ vec3 gc = mix(vec3(.02, .019, .018), vec3(.042, .035, .027), palmK); gc = mix(gc, vec3(.012, .012, .012), knuck); gc = mix(gc, vec3(.03, .028, .024), strap); gc *= 1. - dots * .25;
+  diffuseColor.rgb = mix(diffuseColor.rgb, gc * (1. + pow(1. - clamp(dot(normal, normalize(vViewPosition)), 0., 1.), 2.) * .35), glove); }
+#include <lights_physical_fragment>`)
+      .replace('void main() {', 'float fabricHi = 0., glove = 0., strap = 0., knuck = 0., dots = 0., palmK = 0.;\nvoid main() {');
   };
-  mat.customProgramCacheKey = () => 'armFabric2';
+  mat.customProgramCacheKey = () => 'armFabric3';
   return mat;
 }
 
@@ -104,6 +132,7 @@ export class Weapon {
     this.root = new THREE.Group(); this.cam.add(this.root);
     this.mag = 30; this.magSize = 30; this.reserve = 180; this.fireT = 0; this.rpm = 780; this.reloading = 0; this.ads = 0; this.spread = 0; this.shotsInBurst = 0;
     this.sway = new THREE.Vector2(); this.kick = 0; this.enabled = true; this.lower = 0;
+    this.rr = new THREE.Vector3(); this.rv = new THREE.Vector3(); this.pr = new THREE.Vector3(); this.pv = new THREE.Vector3(); this.tilt = 0; this.airT = 0; this.heat = 0; this._hs = 0;
     this.buildArms(); G.Input = Input;
   }
   buildArms() {
@@ -121,7 +150,12 @@ export class Weapon {
       const idx = g.index.array; const out = [];
       for (let t = 0; t < idx.length; t += 3) if (keepV[idx[t]] && keepV[idx[t + 1]] && keepV[idx[t + 2]]) out.push(idx[t], idx[t + 1], idx[t + 2]);
       g.setIndex(out); o.geometry = g; o.frustumCulled = false; o.castShadow = o.receiveShadow = false;
-      o.material = armFabric(o.material.clone()); o.material.envMapIntensity = .7; o.material.roughness = .9;
+      // bind-pose landmarks for the glove (bone bind positions are the inverses of the bind matrices)
+      const bx = re => { const i = bones.findIndex(bn => re.test(bn.name)); return i < 0 ? null : Math.abs(_v.setFromMatrixPosition(_m.copy(o.skeleton.boneInverses[i]).invert()).x); };
+      const wx = bx(/R_Hand$/) ?? .5, kx = bx(/R_Finger2$/), pos = g.attributes.position, VM = new Float32Array(si.count * 2);
+      for (let i = 0; i < si.count; i++) { let hw = 0; for (let k = 0; k < 4; k++) if (/Hand|Finger/.test(bones[si.getComponent(i, k)].name)) hw += sw.getComponent(i, k); VM[i * 2] = Math.abs(pos.getX(i)) - wx; VM[i * 2 + 1] = hw; }
+      g.setAttribute('aVm', new THREE.BufferAttribute(VM, 2));
+      o.material = armFabric(o.material.clone(), kx ? clamp(kx - wx, .05, .12) : .085); o.material.envMapIntensity = .7; o.material.roughness = .9;
     });
     this.b = {}; body.traverse(o => { if (o.isBone) this.b[o.name.replace('Bip01_', '')] = o; });
     this.holder = new THREE.Group(); this.holder.add(body); this.root.add(this.holder);
@@ -166,7 +200,16 @@ export class Weapon {
     for (const z of [-.039, .031]) { const rim = new THREE.Mesh(new THREE.RingGeometry(.0195, .0235, 24), black); rim.position.set(0, .038, z); o.add(rim); const rb = rim.clone(); rb.rotation.y = Math.PI; o.add(rb); }
     const mount = new THREE.Mesh(new THREE.BoxGeometry(.03, .018, .05), black); mount.position.y = .016; o.add(mount);
     const knob = new THREE.Mesh(new THREE.CylinderGeometry(.009, .009, .012, 12), black); knob.rotation.z = Math.PI / 2; knob.position.set(.026, .038, .005); o.add(knob);
-    const lens = new THREE.Mesh(new THREE.CircleGeometry(.019, 24), new THREE.MeshPhysicalMaterial({ color: '#9fc4d8', metalness: .6, roughness: .05, transparent: true, opacity: .12, envMapIntensity: 1.5, depthWrite: false }));
+    // Glass: a red-dot's objective carries a dichroic coat that reflects the red LED back at the eye, so from behind it
+    // reads faintly blue-green with a warm amber sheen toward its rim; a real lens also reflects more at grazing angles
+    // (Fresnel) and gives back a soft window of the sky. Mostly clear at ADS, so the target is never hidden.
+    const lm = new THREE.MeshStandardMaterial({ color: '#7fa0a4', metalness: 0, roughness: .03, transparent: true, opacity: .1, envMapIntensity: 2.2, depthWrite: false });
+    lm.onBeforeCompile = sh => { sh.fragmentShader = sh.fragmentShader.replace('#include <opaque_fragment>', `{ float fr = pow(1. - clamp(abs(dot(normalize(normal), normalize(vViewPosition))), 0., 1.), 3.); float rim = smoothstep(.55, 1., length(vLensP) / .019);
+  outgoingLight = mix(outgoingLight, outgoingLight * vec3(1.2, 1.02, .75), rim * .4) + vec3(.9, .55, .25) * rim * .02 + vec3(.6, .75, .8) * smoothstep(.01, .0, abs(vLensP.x + vLensP.y * .6 - .006)) * .05;
+  diffuseColor.a = clamp(diffuseColor.a + fr * .45 + rim * .08, 0., .6); }
+#include <opaque_fragment>`).replace('#include <common>', '#include <common>\nvarying vec2 vLensP;'); sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 vLensP;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvLensP = position.xy;'); };
+    lm.customProgramCacheKey = () => 'lensCoat';
+    const lens = new THREE.Mesh(new THREE.CircleGeometry(.019, 24), lm);
     lens.position.set(0, .038, -.03); o.add(lens);
     const top = ud.topY ?? .12; o.scale.setScalar(.85); o.position.set(0, top, ud.opticZ ?? .01); r.add(o); this.optic = o;
     this.sightLocal = new THREE.Vector3(0, top + .038 * .85, (ud.opticZ ?? .01));
@@ -185,6 +228,8 @@ export class Weapon {
     const f = new THREE.Group(); const front = new THREE.Mesh(new THREE.PlaneGeometry(.16, .16), m); f.add(front);
     const side1 = new THREE.Mesh(new THREE.PlaneGeometry(.26, .12), m); side1.rotation.y = Math.PI / 2; side1.position.z = -.1; f.add(side1);
     const side2 = side1.clone(); side2.rotation.z = Math.PI / 2; f.add(side2);
+    // a tight white-hot core right at the crown, which the eye reads as the brightest point of a real flash
+    const core = new THREE.Mesh(new THREE.PlaneGeometry(.06, .06), new THREE.MeshBasicMaterial({ map: tex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, color: new THREE.Color(4, 3.6, 3) })); core.position.z = -.02; f.add(core);
     f.position.copy(this.rifle.userData.muzzle).add(new THREE.Vector3(0, 0, -.01)); f.visible = false; this.rifle.add(f); this.flash = f; this.flashT = 0;
     this.flashLight = new THREE.PointLight('#ffb060', 0, 2.5, 2); this.flashLight.position.copy(this.rifle.userData.muzzle); this.rifle.add(this.flashLight);
   }
@@ -260,7 +305,14 @@ export class Weapon {
     const k = (this.ads > .6 ? .6 : 1) * (G.player.crouching ? .75 : 1); const n = Math.min(this.shotsInBurst, 12); this.drift = (this.drift || 0) * .85 + rr(-.18, .22);
     G.player.recoilVel.x += (.5 + n * .035 + rr(0, .15)) * k; G.player.recoilVel.y += (this.drift * .9 + rr(-.08, .08)) * k;
     G.player.pitch += .004 * k; G.player.yaw += rr(-.002, .002) * k;
+    // view-model kick through a spring (pitch up, a random yaw and roll, a shove back into the shoulder), so each
+    // shot snaps and settles with a slight overshoot instead of sliding back linearly; aimed fire kicks a third as much
+    const vk = (this.ads > .6 ? .35 : 1) * (G.player.crouching ? .8 : 1);
+    this.rv.x += rr(.8, 1.05) * vk; this.rv.y += rr(-.3, .3) * vk; this.rv.z += rr(-.7, .7) * vk; this.pv.z += rr(.42, .55) * vk; this.pv.y += .08 * vk;
     this.kick = 1; this.kickRoll = rr(-1, 1); this.flashT = .045; this.flash.rotation.z = R() * 6.28; this.flash.scale.setScalar(rr(.75, 1.2) * (this.ads > .6 ? .8 : 1));
+    // no two flashes alike: the side jets and the front star change length and strength from shot to shot
+    const fc = this.flash.children; fc[0].scale.setScalar(rr(.7, 1.15)); fc[1].scale.set(rr(.55, 1.3), rr(.8, 1.1), 1); fc[2].scale.set(rr(.55, 1.3), rr(.8, 1.1), 1); fc[3].visible = R() < .6; fc[3].scale.setScalar(rr(.8, 1.3));
+    this.flashI = rr(.75, 1.25); this.heat = Math.min(1, (this.heat || 0) + .035);
     // casing
     const ej = this.rifle.localToWorld(new THREE.Vector3(.02, .075, .06)); const ejW = this.vmToWorld(ej);
     G.fx.casing(ejW, new THREE.Vector3(1, 0, 0).applyQuaternion(G.camera.quaternion).multiplyScalar(rr(1.5, 2.5)).add(new THREE.Vector3(0, rr(1.5, 2.5), 0)));
@@ -324,6 +376,12 @@ export class Weapon {
     // sway from look, walk bob, sprint lowering, recoil kick
     this.sway.x = damp(this.sway.x, clamp(-I.mdx * .00045, -.025, .025), 9, dt); this.sway.y = damp(this.sway.y, clamp(I.mdy * .00045, -.025, .025), 9, dt);
     this.kick = Math.max(0, this.kick - dt * 14);
+    // recoil spring (zeta ~0.6: one small overshoot), sub-stepped so the 20 fps test sim stays stable
+    for (let n = Math.ceil(dt * 90), h = dt / Math.max(1, n), i = 0; i < n; i++) for (const [x, v, k, c] of [[this.rr, this.rv, 170, 15], [this.pr, this.pv, 150, 16]]) { v.x += (-k * x.x - c * v.x) * h; v.y += (-k * x.y - c * v.y) * h; v.z += (-k * x.z - c * v.z) * h; x.addScaledVector(v, h); }
+    // strafing leans the gun into the turn; a landing drops it and lets the spring bring it back
+    const lat = p.vel.x * Math.cos(p.yaw) - p.vel.z * Math.sin(p.yaw); this.tilt = damp(this.tilt, clamp(lat * .012, -.05, .05), 6, dt);
+    if (!p.onGround) this.airT += dt; else { if (this.airT > .15) { this.pv.y -= .35 * Math.min(1, this.airT); this.rv.x -= .35 * Math.min(1, this.airT); } this.airT = 0; }
+    this.heat = Math.max(0, this.heat - dt * .22);
     const bob = p.bobAmt * (1 - this.ads * .88);
     const lowerT = (p.sprinting ? 1 : 0) + (this.enabled ? 0 : 1.4); this.lower = damp(this.lower, lowerT, 7, dt);
     const P = this.rt; const a = this.ads;
@@ -331,9 +389,10 @@ export class Weapon {
     P.rot.set(lerp(this.hipRot.x, this.adsRot.x, a), lerp(this.hipRot.y, this.adsRot.y, a), lerp(this.hipRot.z, this.adsRot.z, a));
     P.pos.x += Math.cos(p.bob) * .011 * bob + this.sway.x * (1 - a * .75) + this.lower * .02;
     P.pos.y += -Math.abs(Math.sin(p.bob)) * .012 * bob + this.sway.y * (1 - a * .75) - this.lower * .06 - (p.crouching ? .004 : 0);
-    P.pos.z += this.kick * (a > .5 ? .018 : .035);
-    P.rot.x += this.kick * (a > .5 ? .018 : .05) - this.lower * .45 - p.suppression * .015 + this.sway.y * .6;
-    P.rot.y += this.lower * .65 + this.sway.x * .8; P.rot.z += this.lower * .3 + Math.sin(p.bob) * .012 * bob + (this.kickRoll || 0) * this.kick * .02;
+    const br = Math.sin(G.time * 1.55) * (1 - a) * (1 - Math.min(1, p.bobAmt || 0));
+    P.pos.x += this.pr.x - this.tilt * .12 * (1 - a); P.pos.y += this.pr.y + br * .0013; P.pos.z += this.pr.z;
+    P.rot.x += this.rr.x - this.lower * .45 - p.suppression * .015 + this.sway.y * .6 + br * .003;
+    P.rot.y += this.rr.y + this.lower * .65 + this.sway.x * .8; P.rot.z += this.rr.z * .5 - this.tilt * (1 - a * .7) + this.lower * .3 + Math.sin(p.bob) * .012 * bob;
     if (a > .5) { const tb = G.time; P.rot.x += Math.sin(tb * 1.3) * .0018 * a; P.rot.y += Math.sin(tb * .9 + 1) * .0022 * a; }
     this.rifle.position.copy(P.pos); this.rifle.rotation.copy(P.rot);
     if (this.reloading > 0) { this.reloadPose(dt); this.rifle.position.copy(P.pos); this.rifle.rotation.copy(P.rot); }
@@ -341,7 +400,9 @@ export class Weapon {
     this.poseArms();
     if (this.magDrop) { const d = this.magDrop; d.t += dt; d.v.y -= 9.8 * dt; d.m.position.addScaledVector(d.v, dt); d.m.rotateX(dt * 2); if (d.t > .8) { this.cam.remove(d.m); this.magDrop = null; } }
     this.dot.material.opacity = clamp((this.ads - .85) * 7, 0, 1);
-    this.flashT -= dt; this.flash.visible = this.flashT > 0; this.flashLight.intensity = this.flashT > 0 ? 6 : 0;
+    this.flashT -= dt; this.flash.visible = this.flashT > 0; this.flashLight.intensity = this.flashT > 0 ? 6 * (this.flashI || 1) : 0;
+    // a hot barrel smokes for a few seconds after a long burst (not while firing: the blast clears it)
+    if (this.heat > .3 && this.fireT < -.2 && G.fx.barrelSmoke) { this._hs += dt * 14 * (this.heat - .3); if (this._hs >= 1) { this._hs -= 1; G.fx.barrelSmoke(this.muzzleWorld(), this.heat); } }
     if (this.optic) this.optic.visible = true;
     // lit by the world around the eye: the baked ambient visibility there, and the sun only while the eye can see it
     // lit like the world around the eye: ambient through the probes there (gi.js, userData.giView), and the sun only while the eye can see it

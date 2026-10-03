@@ -68,7 +68,7 @@ function mats() {
     gun: std({ color: '#1c1d1b', roughness: .5, metalness: .6 }),
     brass: std({ color: '#b08a3a', roughness: .35, metalness: .9 }),
     mfd: [0, 1, 2, 3].map(k => new THREE.MeshStandardMaterial({ map: mfd(k), emissive: '#ffffff', emissiveMap: mfd(k), emissiveIntensity: .9, roughness: .3 })),
-    glass: new THREE.MeshStandardMaterial({ color: '#27313a', roughness: .04, metalness: .2, transparent: true, opacity: .38, envMapIntensity: 1.6, depthWrite: false }),
+    glass: new THREE.MeshStandardMaterial({ color: '#2a3338', roughness: .1, metalness: .2, transparent: true, opacity: .42, envMapIntensity: 1.4, depthWrite: false }),
   };
   return M;
 }
@@ -248,7 +248,9 @@ const _w = new THREE.Vector3();
 // ---------- exterior dressing: slide doors, glazing, IAF roundels ----------
 export function dressHeli(o, v) {
   const m = mats();
-  o.traverse(c => { if (c.isMesh) { const mt = c.material; if (mt.transparent || /transparent/i.test(mt.name)) c.material = m.glass; else { mt.side = THREE.DoubleSide; mt.onBeforeCompile = sh => { sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', '#include <map_fragment>\n if (!gl_FrontFacing) diffuseColor.rgb = vec3(.13, .135, .12);'); }; mt.customProgramCacheKey = () => 'heliInner'; } } });
+  // painted parts are double-sided (the cabin is seen from inside); vehicles.js gives them the matte paint/grime shader,
+  // which paints back faces a dark interior grey (userData.heliPaint marks them)
+  o.traverse(c => { if (c.isMesh) { const mt = c.material; if (mt.transparent || /transparent/i.test(mt.name)) c.material = m.glass; else { mt.side = THREE.DoubleSide; mt.userData.heliPaint = true; } } });
   const doors = ['doorL', 'glaceL', 'doorR', 'glaceR'].map(n => o.getObjectByName(n)).filter(Boolean);
   doors.forEach(d => { d.userData.p0 = d.position.clone(); });
   v.doorOpen = 0; v.doorTarget = 0;

@@ -102,3 +102,37 @@ vec3 fgV=vFogW-cameraPosition;float fogFactor=1.-exp(-fgT);vec3 fc=fogColor*fgIn
 gl_FragColor.rgb=mix(gl_FragColor.rgb,fc,fogFactor);}
 #endif`;
 }
+
+// Phones: small props far away cost a draw call (and a shadow-pass call) each and cover a few pixels, or none. Every
+// half second, static meshes whose bounding sphere would be under ~5 CSS px tall on screen are taken off the camera's
+// layer (not .visible, which game code toggles for its own reasons). Anything that has moved since it was first seen
+// (doors, vehicles, carried rifles) is left alone from then on, and objects flagged userData.noCull are skipped.
+// Instanced and batched meshes, points, skinned meshes and anything with frustumCulled = false are never touched.
+const _dc = { v: new THREE.Vector3(), s: new THREE.Vector3() };
+export function detailCull(scene, cam, on, px = 5) {
+  scene.updateMatrixWorld();
+  const H = innerHeight, k = H / (px * Math.tan(THREE.MathUtils.degToRad(cam.fov / (cam.zoom || 1)) / 2)), cp = cam.position; let n = 0;
+  const walk = o => {
+    if (!o.visible || o.userData.noCull) return;
+    if (o.isMesh && !o.isSkinnedMesh && !o.isInstancedMesh && !o.isBatchedMesh && o.frustumCulled !== false && o.geometry) {
+      const u = o.userData;
+      if (u._dcR === undefined) { const g = o.geometry; if (!g.boundingSphere) g.computeBoundingSphere(); o.getWorldScale(_dc.s); u._dcR = g.boundingSphere ? g.boundingSphere.radius * Math.max(_dc.s.x, _dc.s.y, _dc.s.z) : 1e9; u._dcM = o.layers.mask; }
+      if (u._dcR < 3 && !u._dcDyn) {
+        const c = _dc.v.copy(o.geometry.boundingSphere.center).applyMatrix4(o.matrixWorld);
+        if (!u._dcC) u._dcC = c.clone(); else if (u._dcC.distanceToSquared(c) > .0025) { u._dcDyn = true; o.layers.mask = u._dcM; }
+        if (!u._dcDyn) { const far = on && c.distanceTo(cp) - u._dcR > Math.max(12, u._dcR * k); o.layers.mask = far ? 0 : u._dcM; if (far) n++; }
+      }
+    }
+    const ch = o.children; for (let i = 0; i < ch.length; i++) walk(ch[i]);
+  };
+  walk(scene); return n;
+}
+// every 0.5 s, and sooner (at most every 0.1 s) after a cut (the camera jumped) or when the lens narrowed (binoculars, drone zoom), so nothing
+// pops in late; actors and what they carry are flagged first
+const _dt = { t: 0, p: new THREE.Vector3(1e9, 0, 0), fov: 0 };
+export function detailCullTick(scene, cam, dt, on) {
+  _dt.t -= dt; if (_dt.t > 0 && (_dt.t > .4 || cam.position.distanceToSquared(_dt.p) < 64 && cam.fov > _dt.fov * .8)) return;
+  _dt.t = .5; _dt.p.copy(cam.position); _dt.fov = cam.fov;
+  for (const a of G.actors) for (const o of [a.root, a.rifle, a.band]) if (o) o.userData.noCull = true;
+  G.dcN = detailCull(scene, cam, on);
+}

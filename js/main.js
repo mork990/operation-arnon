@@ -11,7 +11,7 @@ import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MeshBVH } from 'three-mesh-bvh';
-import { G, installFog, FOG, tickTimers, bus, clamp, fmtClock } from './core.js';
+import { G, installFog, FOG, tickTimers, bus, clamp, fmtClock, detailCullTick } from './core.js';
 import { loadAll, A } from './assets.js';
 import { buildMaterials } from './materials.js';
 import { buildWorld } from './world.js';
@@ -32,7 +32,7 @@ import { UpscalePass, DynRes } from './resolution.js';
 
 const $ = id => document.getElementById(id);
 // build number in the menu and the pause card: tells a play-tester which version (and not a cached older script) is running
-const BUILD = 22; $('build').textContent = '· גרסה ' + BUILD;
+const BUILD = 23; $('build').textContent = '· גרסה ' + BUILD;
 const canvas = $('c');
 
 function err(msg) { const e = $('err'); e.hidden = false; e.textContent = msg; }
@@ -62,7 +62,10 @@ sky.material.uniforms.turbidity.value = 9; sky.material.uniforms.rayleigh.value 
 sky.material.uniforms.sunPosition.value.copy(G.sunDir);
 
 const sun = new THREE.DirectionalLight('#ffe8c8', 4.3); sun.castShadow = true; sun.shadow.bias = -.0002; sun.shadow.normalBias = .03;
-const sc = sun.shadow.camera; sc.left = -45; sc.right = 45; sc.top = 45; sc.bottom = -45; sc.near = 1; sc.far = 400;
+// phones: a tighter live shadow box (fewer casters in the shadow pass, a smaller map for the same texel size); the baked
+// town shadow takes over from ~30 m instead of ~40 m, where a phone screen shows the difference in a few pixels at most
+const SHX = G.isTouch ? 36 : 45, SUN_NEAR = G.isTouch ? 31 : 40;
+const sc = sun.shadow.camera; sc.left = -SHX; sc.right = SHX; sc.top = SHX; sc.bottom = -SHX; sc.near = 1; sc.far = 400;
 scene.add(sun, sun.target); G.sun = sun;
 // the sun's glare, shafts and ghosts are a post pass (sunfx.js)
 const hemi = new THREE.HemisphereLight('#c4d6ec', '#b9a286', 1.2); scene.add(hemi); // ground: sunlit sand and plaster bounce, warm but not orange
@@ -78,10 +81,10 @@ let gtao = null, vmPass = null, fxaa = null, smaa = null, heat = null;
 const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), .28, .5, .98);
 const autoExp = G.autoExp = new AutoExposure();
 const sunFx = G.sunFx = new SunFx({ strength: 0.6, color: '#fff0dc' });
-const grade = G.grade = new ShaderPass({ uniforms: { tDiffuse: { value: null }, uT: { value: 0 }, uHurt: { value: 0 }, uTx: { value: new THREE.Vector2(1 / 1280, 1 / 720) }, uSharp: { value: .35 }, tExp: { value: null }, uKey: { value: 0 }, uAlpha: { value: 0 }, uEvLo: { value: 0 }, uEvHi: { value: 0 }, uEvBias: { value: 0 }, tSun: { value: null }, uSunUv: { value: new THREE.Vector2() }, uSunI: { value: 0 }, uSunCol: { value: new THREE.Vector3() }, uSunAsp: { value: 1 } },
+const grade = G.grade = new ShaderPass({ uniforms: { tDiffuse: { value: null }, uT: { value: 0 }, uHurt: { value: 0 }, uTx: { value: new THREE.Vector2(1 / 1280, 1 / 720) }, uSharp: { value: .35 }, tExp: { value: null }, uKey: { value: 0 }, uAlpha: { value: 0 }, uEvLo: { value: 0 }, uEvHi: { value: 0 }, uEvBias: { value: 0 }, tSun: { value: null }, uSunUv: { value: new THREE.Vector2() }, uSunI: { value: 0 }, uSunCol: { value: new THREE.Vector3() }, uSunAsp: { value: 1 }, uOut: { value: 0 } },
   vertexShader: `varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
   // (sharpening works on x/(1+x): in linear HDR the unsharp mask rang around the sun and bright windows)
-  fragmentShader: `uniform sampler2D tDiffuse;uniform float uT,uHurt,uSharp;uniform vec2 uTx;varying vec2 vUv;
+  fragmentShader: `uniform sampler2D tDiffuse;uniform float uT,uHurt,uSharp,uOut;uniform vec2 uTx;varying vec2 vUv;
   ${EXPOSURE_GLSL}
   ${SUN_GLSL}
   ${GRADE_GLSL}
@@ -90,24 +93,33 @@ const grade = G.grade = new ShaderPass({ uniforms: { tDiffuse: { value: null }, 
     vec3 sf=sunFx(vUv);c.rgb+=sf;nb+=sf;float ex=autoExposure();c.rgb*=ex;nb*=ex;
     vec3 cc=c.rgb/(1.+c.rgb),cn=nb/(1.+nb);cc=clamp(cc+(cc-cn)*uSharp,0.,.995);c.rgb=cc/(1.-cc);
     c.rgb=filmGrade(c.rgb,ex);float l=dot(c.rgb,vec3(.299,.587,.114));c.rgb=mix(vec3(l),c.rgb,1.-uHurt*.5);
-    c.rgb=filmFinish(c.rgb,vUv,uHurt*1.5,uT);gl_FragColor=c;}` });
+    c.rgb=filmFinish(c.rgb,vUv,uHurt*1.5,uT);gl_FragColor=c;if(uOut>.5)gl_FragColor=sRGBTransferOETF(gl_FragColor);}` });
+// The grade also does the OutputPass's job (one full-screen pass less, on every device). With CustomToneMapping r170's
+// OutputPass only applies the sRGB transfer (its shader has no CUSTOM_TONE_MAPPING branch), so that is all this does;
+// the OutputPass stays in the chain and takes over whenever the renderer is switched to a built-in curve (G.debug.tone).
+grade.material.toneMapped = false;
+let outPass = null;
+function post() { if (outPass) { outPass.enabled = renderer.toneMapping !== THREE.CustomToneMapping || !!G.debug.noMerge; grade.uniforms.uOut.value = outPass.enabled ? 0 : 1; } composer.render(); }
 Object.assign(grade.uniforms, autoExp.uniforms, sunFx.uniforms, GRADE_U); // shared objects: the adapted-exposure texture changes every frame
 
 // ---------- quality ----------
 // render resolution per quality level; phones have dense screens and get a higher cap (dynamic resolution protects the frame rate)
 function basePR(q) { const dpr = devicePixelRatio || 1; return G.isTouch ? [Math.min(dpr, 1.1), Math.min(dpr, G.lowMem ? 1.5 : 1.8), Math.min(dpr, G.lowMem ? 1.8 : 2.4)][q] : [.75, Math.min(dpr, 1.3), Math.min(dpr, 2)][q]; }
 // the canvas keeps the display's resolution; the scene renders at basePR x dynamic scale and UpscalePass resamples it
-// (phones: only when dynamic resolution has dropped; an always-on full-res pass costs fill rate they don't have)
-function displayPR() { return G.isTouch ? basePR(G.quality) : Math.max(basePR(G.quality), Math.min(devicePixelRatio || 1, 2)); }
+// Phones: the canvas follows the internal resolution and the browser's compositor stretches it to the screen for free.
+// It does that on every phone anyway (the canvas is under the screen's density), and an upscale pass at full canvas
+// resolution, switched on by the first step down, ate most of what that step saved: the dynamic-resolution probe then
+// judged the drop useless and gave the pixels back.
+function displayPR() { return G.isTouch ? internalPR() : Math.max(basePR(G.quality), Math.min(devicePixelRatio || 1, 2)); }
 function internalPR() { return basePR(G.quality) * dyn.scale; }
-const dyn = new DynRes(); const upscale = new UpscalePass();
+const dyn = new DynRes(G.isTouch ? 'arnon-dyn' : null); const upscale = new UpscalePass();
 function applyQuality(q) {
   G.quality = q; const dpr = devicePixelRatio || 1;
   renderer.setPixelRatio(displayPR());
   renderer.shadowMap.enabled = q > 0; sun.castShadow = q > 0;
   // low quality has no live shadow map: the baked town shadow covers everything
-  GIU.uSunNear.value = q > 0 ? 40 : 0;
-  const ms = (q === 2 ? 4096 : 2048) / (G.lowMem ? 2 : 1); sun.shadow.mapSize.set(ms, ms); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
+  GIU.uSunNear.value = q > 0 ? SUN_NEAR : 0;
+  const ms = G.isTouch ? (q === 2 ? 2048 : G.lowMem ? 1024 : 1536) : q === 2 ? 4096 : 2048; sun.shadow.mapSize.set(ms, ms); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
   scene.traverse(o => { if (o.material) [].concat(o.material).forEach(m => m.needsUpdate = true); });
   // compile every shader now so nothing hitches the first time it comes into view (entering the building, first explosion...)
   precompile();
@@ -181,14 +193,14 @@ async function boot() {
   class GTAOFromDepth extends GTAOPass { render(r, w, rb, dt, m) { const d = rb.depthTexture; G.sceneDepth = d; if (d && this.gtaoMaterial.uniforms.tDepth.value !== d) { this.gtaoMaterial.uniforms.tDepth.value = d; this.pdMaterial.uniforms.tDepth.value = d; } super.render(r, w, rb, dt, m); } }
   gtao = new GTAOFromDepth(scene, camera, 1, 1); gtao.setGBuffer(composer.readBuffer.depthTexture); // (after construction: r170's setGBuffer trips over a missing normal target otherwise)
   gtao.output = GTAOPass.OUTPUT.Default; gtao.blendIntensity = .9; G.gtao = gtao;
-  gtao.updateGtaoMaterial({ radius: .6, distanceExponent: 1.6, thickness: 1.2, scale: 1, samples: 12, distanceFallOff: 1 }); composer.addPass(gtao);
+  gtao.updateGtaoMaterial({ radius: .6, distanceExponent: 1.6, thickness: 1.2, scale: 1, samples: G.isTouch ? 8 : 12, distanceFallOff: 1 }); composer.addPass(gtao); // (phones only get GTAO on high; 8 taps there)
   class VMPass extends RenderPass { render(r, w, rb, dt, m) { r.setRenderTarget(this.renderToScreen ? null : rb); r.clearDepth(); super.render(r, w, rb, dt, m); } }
   composer.addPass(autoExp); // meter the world before the weapon is drawn over it
   composer.addPass(sunFx);
   heat = new HeatHaze(1.0); composer.addPass(heat); // needs the scene depth GTAO passes on: on with GTAO only
   vmPass = new VMPass(G.weapon.scene, G.weapon.cam); vmPass.clear = false; vmPass.clearDepth = false; composer.addPass(vmPass);
   // bloom sees absolute light (windows, flashes), then exposure scales both
-  composer.addPass(bloom); composer.addPass(grade); composer.addPass(new OutputPass());
+  composer.addPass(bloom); composer.addPass(grade); outPass = new OutputPass(); composer.addPass(outPass);
   fxaa = new ShaderPass(FXAAShader); composer.addPass(fxaa); smaa = new SMAAPass(innerWidth, innerHeight); composer.addPass(smaa); composer.addPass(upscale);
   initInput(canvas);
   let q = G.isTouch ? 1 : 2; try { const s = localStorage.getItem('arnon-q'); if (s !== null) q = +s; } catch (e) {}
@@ -220,7 +232,7 @@ function startMission(cp = 0) {
 }
 function lock() { if (!G.isTouch) { try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (e) {} } }
 function pause(on) {
-  if (on && (G.state === 'play' || G.state === 'cutscene')) { G.prevState = G.state; G.state = 'paused'; $('pause').hidden = false; G.audio.ctx.suspend(); $('diag').textContent = `גרסה ${BUILD} · ${G.fps || '—'} fps · איכות ${['נמוכה', 'בינונית', 'גבוהה'][G.quality]} · רזולוציה ${Math.round(internalPR() / displayPR() * 100)}%`; }
+  if (on && (G.state === 'play' || G.state === 'cutscene')) { G.prevState = G.state; G.state = 'paused'; $('pause').hidden = false; G.audio.ctx.suspend(); $('diag').textContent = `גרסה ${BUILD} · ${G.fps || '—'} fps · איכות ${['נמוכה', 'בינונית', 'גבוהה'][G.quality]} · רזולוציה ${Math.round((G.isTouch ? dyn.scale : internalPR() / displayPR()) * 100)}%`; }
   else if (!on && G.state === 'paused') { G.state = G.prevState; $('pause').hidden = true; G.audio.resume(); lock(); G.clock.getDelta(); }
 }
 $('bstart').addEventListener('click', startBriefing);
@@ -271,9 +283,18 @@ function frame() {
   if ((G.state === 'play' || G.state === 'cutscene') && dyn.update(rawDt * 1000)) resize();
   step(dt);
   if (vmPass) vmPass.enabled = G.state === 'play' || G.state === 'cutscene';
-  composer.render();
+  post();
   const active = G.state === 'play' || G.state === 'cutscene';
-  fpsN++; const now = performance.now(); if (now - fpsT > 1000) { const f = fpsN * 1000 / (now - fpsT); G.fps = Math.round(f); $('fps').textContent = G.fps + ' fps'; fpsN = 0; fpsT = now; if (!autoQ && active && G.time > 8 && !G.debug.noAuto) { autoQ = true; if (f < 26 && G.quality > 0) applyQuality(G.quality - 1); } }
+  fpsN++; const now = performance.now(); if (now - fpsT > 1000) { const f = fpsN * 1000 / (now - fpsT); G.fps = Math.round(f); $('fps').textContent = G.fps + ' fps'; fpsN = 0; fpsT = now; if (!autoQ && active && !G.debug.noAuto) autoQuality(f); }
+}
+// one automatic step down. Desktop: a single check once the mission runs. Phones: after 4 s of play, three seconds in a
+// row under 24 fps (one hitch while shaders and textures warm up must not cost the shadows for the whole session)
+let playS = 0, slowS = 0;
+function autoQuality(f) {
+  if (!G.isTouch) { if (G.time > 8) { autoQ = true; if (f < 26 && G.quality > 0) applyQuality(G.quality - 1); } return; }
+  // (only in the first 40 s: later, dropping a level recompiles every shader in the middle of a fight)
+  if (++playS <= 4) return; if (playS > 40) { autoQ = true; return; } slowS = f < 24 ? slowS + 1 : 0;
+  if (slowS >= 3) { autoQ = true; if (G.quality > 0) applyQuality(G.quality - 1); }
 }
 function step(dt) {
   const active = G.state === 'play' || G.state === 'cutscene';
@@ -285,6 +306,8 @@ function step(dt) {
     for (let i = G.actors.length - 1; i >= 0; i--) G.actors[i] && G.actors[i].update(dt);
     // people beyond ~35 m drop out of the shadow pass (their shadow is a few pixels; each costs a call per material)
     if ((G._shT = (G._shT || 0) - dt) <= 0) { G._shT = .5; const cp = camera.position; for (const a of G.actors) { if (!a.root) continue; const far = a.root.position.distanceToSquared(cp) > 35 * 35; if (a._farSh !== far) { a._farSh = far; a.root.traverse(o => { if (o.isMesh) o.castShadow = !far; }); if (a.rifle) a.rifle.traverse(o => { if (o.isMesh) o.castShadow = !far; }); } } }
+    // phones: far small props off the camera layer (core.js detailCull); people and what they carry never
+    if (G.isTouch) detailCullTick(scene, camera, dt, !G.debug.noCull);
     G.weapon.update(dt); G.weapon.root.visible = active && G.weapon.root.visible;
     G.fx.update(dt); updateDoors(dt);
     G.audio.updateListener(camera); G.audio.update(dt); G.ui.update(dt); G.guide.update(dt);
@@ -308,6 +331,6 @@ function step(dt) {
     G.fx.setScale(innerHeight * internalPR() / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))));
   }
 }
-if (location.hash === '#dev') { window.G = G; G.debug.advance = (sec, fps = 20) => { for (let i = 0; i < sec * fps; i++) step(1 / fps); vmPass.enabled = G.state === 'play' || G.state === 'cutscene'; autoExp.snap = true; composer.render(); autoExp.snap = false; }; G.debug.sim = (sec, fps = 20) => { for (let i = 0; i < sec * fps; i++) step(1 / fps); }; G.debug.render = () => { vmPass.enabled = G.state === 'play' || G.state === 'cutscene'; autoExp.snap = true; composer.render(); autoExp.snap = false; }; G.debug.GIU = GIU; G.debug.giAt = (x, y, z, n) => +giAt(new THREE.Vector3(x, y, z), n ? new THREE.Vector3(...n) : null).toFixed(3); G.debug.exposure = () => autoExp.read(renderer); G.debug.tone = (k, e) => { renderer.toneMapping = THREE[k]; if (e !== undefined) renderer.toneMappingExposure = e; }; G.debug.startMission = startMission; G.debug.quality = applyQuality; G.debug.briefing = startBriefing; }
+if (location.hash === '#dev') { window.G = G; G.debug.advance = (sec, fps = 20) => { for (let i = 0; i < sec * fps; i++) step(1 / fps); vmPass.enabled = G.state === 'play' || G.state === 'cutscene'; autoExp.snap = true; post(); autoExp.snap = false; }; G.debug.sim = (sec, fps = 20) => { for (let i = 0; i < sec * fps; i++) step(1 / fps); }; G.debug.render = () => { vmPass.enabled = G.state === 'play' || G.state === 'cutscene'; autoExp.snap = true; post(); autoExp.snap = false; }; G.debug.GIU = GIU; G.debug.giAt = (x, y, z, n) => +giAt(new THREE.Vector3(x, y, z), n ? new THREE.Vector3(...n) : null).toFixed(3); G.debug.exposure = () => autoExp.read(renderer); G.debug.tone = (k, e) => { renderer.toneMapping = THREE[k]; if (e !== undefined) renderer.toneMappingExposure = e; }; G.debug.startMission = startMission; G.debug.quality = applyQuality; G.debug.briefing = startBriefing; }
 
 boot().then(() => { $('bstart').disabled = false; }).catch(e => { console.error(e); err('שגיאה בטעינת המשחק: ' + e.message); });

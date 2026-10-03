@@ -10,7 +10,7 @@ import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MeshBVH } from 'three-mesh-bvh';
-import { G, installFog, tickTimers, bus, clamp, V3 } from '../core.js';
+import { G, installFog, tickTimers, bus, clamp, V3, detailCullTick } from '../core.js';
 import { loadAll, A } from '../assets.js';
 import { buildMaterials } from '../materials.js';
 import { B } from '../building.js';
@@ -37,7 +37,7 @@ import { UpscalePass, DynRes } from '../resolution.js';
 
 const $ = id => document.getElementById(id);
 // build number in the menu and the pause card: tells a play-tester which version (and not a cached older script) is running
-const BUILD = 22; $('build').textContent = '· גרסה ' + BUILD;
+const BUILD = 23; $('build').textContent = '· גרסה ' + BUILD;
 const canvas = $('c');
 function err(msg) { const e = $('err'); e.hidden = false; e.textContent = msg; }
 addEventListener('error', e => { if (e.message) err('שגיאה בטעינת המשחק: ' + e.message); });
@@ -74,7 +74,10 @@ const camera = new THREE.PerspectiveCamera(72, 1, .05, 7000); G.camera = camera;
 G.clock = new THREE.Clock();
 
 const sun = new THREE.DirectionalLight('#ffd09a', 3.4); sun.castShadow = true; sun.shadow.bias = -.0003; sun.shadow.normalBias = .04;
-const sc = sun.shadow.camera; sc.left = -60; sc.right = 60; sc.top = 60; sc.bottom = -60; sc.near = 1; sc.far = 500;
+// phones: a tighter live shadow box (fewer casters, a smaller map for the same texel size); the baked shadow of the
+// incident area takes over from ~40 m instead of ~54 m
+const SHX = G.isTouch ? 44 : 60, SUN_NEAR = G.isTouch ? 40 : 54;
+const sc = sun.shadow.camera; sc.left = -SHX; sc.right = SHX; sc.top = SHX; sc.bottom = -SHX; sc.near = 1; sc.far = 500;
 scene.add(sun, sun.target); G.sun = sun;
 // the sun's glare, shafts and ghosts are a post pass (sunfx.js)
 const hemi = new THREE.HemisphereLight('#c9cfd6', '#b08e66', 1.05); scene.add(hemi);
@@ -89,10 +92,10 @@ let gtao = null, vmPass = null, fxaa = null, smaa = null, heat = null;
 const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), .3, .5, .97);
 const autoExp = G.autoExp = new AutoExposure();
 const sunFx = G.sunFx = new SunFx({ strength: 1.0, color: '#ffc98a' });
-const grade = G.grade = new ShaderPass({ uniforms: { tDiffuse: { value: null }, uT: { value: 0 }, uHurt: { value: 0 }, uGas: { value: 0 }, uTx: { value: new THREE.Vector2(1 / 1280, 1 / 720) }, uSharp: { value: .35 }, uBino: { value: 0 }, uAspect: { value: 1.7 }, tExp: { value: null }, uKey: { value: 0 }, uAlpha: { value: 0 }, uEvLo: { value: 0 }, uEvHi: { value: 0 }, uEvBias: { value: 0 }, tSun: { value: null }, uSunUv: { value: new THREE.Vector2() }, uSunI: { value: 0 }, uSunCol: { value: new THREE.Vector3() }, uSunAsp: { value: 1 } },
+const grade = G.grade = new ShaderPass({ uniforms: { tDiffuse: { value: null }, uT: { value: 0 }, uHurt: { value: 0 }, uGas: { value: 0 }, uTx: { value: new THREE.Vector2(1 / 1280, 1 / 720) }, uSharp: { value: .35 }, uBino: { value: 0 }, uAspect: { value: 1.7 }, tExp: { value: null }, uKey: { value: 0 }, uAlpha: { value: 0 }, uEvLo: { value: 0 }, uEvHi: { value: 0 }, uEvBias: { value: 0 }, tSun: { value: null }, uSunUv: { value: new THREE.Vector2() }, uSunI: { value: 0 }, uSunCol: { value: new THREE.Vector3() }, uSunAsp: { value: 1 }, uOut: { value: 0 } },
   vertexShader: `varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
   // (sharpening works on x/(1+x): in linear HDR the unsharp mask rang around the sun disc)
-  fragmentShader: `uniform sampler2D tDiffuse;uniform float uT,uHurt,uSharp,uGas,uBino,uAspect;uniform vec2 uTx;varying vec2 vUv;
+  fragmentShader: `uniform sampler2D tDiffuse;uniform float uT,uHurt,uSharp,uGas,uBino,uAspect,uOut;uniform vec2 uTx;varying vec2 vUv;
   ${EXPOSURE_GLSL}
   ${SUN_GLSL}
   ${GRADE_GLSL}
@@ -105,7 +108,12 @@ const grade = G.grade = new ShaderPass({ uniforms: { tDiffuse: { value: null }, 
     if(uGas>0.){vec3 bl=(texture2D(tDiffuse,vUv+vec2(.004,.003)).rgb+texture2D(tDiffuse,vUv-vec2(.004,.002)).rgb+texture2D(tDiffuse,vUv+vec2(-.003,.005)).rgb)/3.;c.rgb=mix(c.rgb,bl,uGas*.8);c.rgb=mix(c.rgb,vec3(.86,.84,.8),uGas*.35);c.rgb*=mix(vec3(1.),vec3(1.08,.9,.88),uGas);}
     // binoculars: two overlapping round fields, black outside
     if(uBino>0.){vec2 q=vec2(d.x*uAspect,d.y);float r1=length(q-vec2(-.19,0.)),r2=length(q-vec2(.19,0.));float m=smoothstep(.43,.41,min(r1,r2));c.rgb*=mix(1.,m,uBino);c.rgb*=mix(1.,1.-smoothstep(.2,.43,min(r1,r2))*.35,uBino);}
-    c.rgb=filmFinish(c.rgb,vUv,uHurt*1.5+uGas*1.2,uT);gl_FragColor=c;}` });
+    c.rgb=filmFinish(c.rgb,vUv,uHurt*1.5+uGas*1.2,uT);gl_FragColor=c;if(uOut>.5)gl_FragColor=sRGBTransferOETF(gl_FragColor);}` });
+// The grade also does the OutputPass's job (one full-screen pass less). With CustomToneMapping r170's OutputPass only
+// applies the sRGB transfer (it has no CUSTOM_TONE_MAPPING branch), so that is all this does. The OutputPass stays in
+// the chain for the drone feed (its pass works on the linear image between the two) and for a built-in tone curve.
+grade.material.toneMapped = false;
+let outPass = null;
 Object.assign(grade.uniforms, autoExp.uniforms, sunFx.uniforms, GRADE_U); // shared objects: the adapted-exposure texture changes every frame
 // golden hour: the warm/cool split is stronger than at noon (low sun, blue shade), with a little more contrast and colour
 // than the town's midday grade so the low sun reads; saturated colours roll off a little more
@@ -129,17 +137,20 @@ uav.enabled = false;
 // ---------- quality ----------
 function basePR(q) { const dpr = devicePixelRatio || 1; return G.isTouch ? [Math.min(dpr, 1.1), Math.min(dpr, G.lowMem ? 1.4 : 1.7), Math.min(dpr, G.lowMem ? 1.8 : 2.2)][q] : [.75, Math.min(dpr, 1.3), Math.min(dpr, 2)][q]; }
 // the canvas keeps the display's resolution; the scene renders at basePR x dynamic scale and UpscalePass resamples it
-// (phones: only when dynamic resolution has dropped; an always-on full-res pass costs fill rate they don't have)
-function displayPR() { return G.isTouch ? basePR(G.quality) : Math.max(basePR(G.quality), Math.min(devicePixelRatio || 1, 2)); }
+// Phones: the canvas follows the internal resolution and the browser's compositor stretches it to the screen for free.
+// It does that on every phone anyway (the canvas is under the screen's density), and an upscale pass at full canvas
+// resolution, switched on by the first step down, ate most of what that step saved: the dynamic-resolution probe then
+// judged the drop useless and gave the pixels back.
+function displayPR() { return G.isTouch ? internalPR() : Math.max(basePR(G.quality), Math.min(devicePixelRatio || 1, 2)); }
 function internalPR() { return basePR(G.quality) * dyn.scale; }
-const dyn = new DynRes(); const upscale = new UpscalePass();
+const dyn = new DynRes(G.isTouch ? 'fence-dyn' : null); const upscale = new UpscalePass();
 function applyQuality(q) {
   G.quality = q;
   renderer.setPixelRatio(displayPR());
   renderer.shadowMap.enabled = q > 0; sun.castShadow = q > 0;
   // low quality has no live shadow map: the baked town shadow covers everything
-  GIU.uSunNear.value = q > 0 ? 54 : 0;
-  const ms = (q === 2 ? 4096 : 2048) / (G.lowMem ? 2 : 1); sun.shadow.mapSize.set(ms, ms); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
+  GIU.uSunNear.value = q > 0 ? SUN_NEAR : 0;
+  const ms = G.isTouch ? (q === 2 ? 2048 : G.lowMem ? 1024 : 1536) : q === 2 ? 4096 : 2048; sun.shadow.mapSize.set(ms, ms); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
   scene.traverse(o => { if (o.material) [].concat(o.material).forEach(m => m.needsUpdate = true); });
   precompile();
   bloom.enabled = q > 0; if (gtao) gtao.enabled = q === 2 || (q === 1 && !G.isTouch); if (heat) heat.enabled = !!(gtao && gtao.enabled); if (fxaa) fxaa.enabled = q === 0; if (smaa) smaa.enabled = q === 1; grade.uniforms.uSharp.value = [.2, .3, .36][q];
@@ -218,13 +229,13 @@ void main(){ vec3 d = normalize(vDir); float a = atan(d.z, d.x) + uRot; vec2 uv 
   class GTAOFromDepth extends GTAOPass { render(r, w, rb, dt, m) { const d = rb.depthTexture; G.sceneDepth = d; if (d && this.gtaoMaterial.uniforms.tDepth.value !== d) { this.gtaoMaterial.uniforms.tDepth.value = d; this.pdMaterial.uniforms.tDepth.value = d; } super.render(r, w, rb, dt, m); } }
   gtao = new GTAOFromDepth(scene, camera, 1, 1); gtao.setGBuffer(composer.readBuffer.depthTexture); // (after construction: r170's setGBuffer trips over a missing normal target otherwise)
   gtao.output = GTAOPass.OUTPUT.Default; gtao.blendIntensity = .8; G.gtao = gtao;
-  gtao.updateGtaoMaterial({ radius: .6, distanceExponent: 1.6, thickness: 1.2, scale: 1, samples: 12, distanceFallOff: 1 }); composer.addPass(gtao);
+  gtao.updateGtaoMaterial({ radius: .6, distanceExponent: 1.6, thickness: 1.2, scale: 1, samples: G.isTouch ? 8 : 12, distanceFallOff: 1 }); composer.addPass(gtao); // (phones only get GTAO on high; 8 taps there)
   composer.addPass(autoExp); // meter the world before the weapon is drawn over it
   composer.addPass(sunFx);
   heat = new HeatHaze(0.55); composer.addPass(heat); // needs the scene depth GTAO passes on: on with GTAO only
   class VMPass extends RenderPass { render(r, w, rb, dt, m) { r.setRenderTarget(this.renderToScreen ? null : rb); r.clearDepth(); super.render(r, w, rb, dt, m); } }
   vmPass = new VMPass(G.weapon.scene, G.weapon.cam); vmPass.clear = false; vmPass.clearDepth = false; composer.addPass(vmPass);
-  composer.addPass(bloom); composer.addPass(grade); composer.addPass(uav); composer.addPass(new OutputPass()); fxaa = new ShaderPass(FXAAShader); composer.addPass(fxaa); smaa = new SMAAPass(innerWidth, innerHeight); composer.addPass(smaa); composer.addPass(upscale);
+  composer.addPass(bloom); composer.addPass(grade); composer.addPass(uav); outPass = new OutputPass(); composer.addPass(outPass); fxaa = new ShaderPass(FXAAShader); composer.addPass(fxaa); smaa = new SMAAPass(innerWidth, innerHeight); composer.addPass(smaa); composer.addPass(upscale);
   initInput(canvas);
   let q = G.isTouch ? 1 : 2; try { const s = localStorage.getItem('fence-q'); if (s !== null) q = +s; } catch (e) {}
   applyQuality(q);
@@ -249,7 +260,7 @@ function startMission() {
 function lock() { if (!G.isTouch && !(G.tablet && G.tablet.open) && !G.freeCursor) { try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (e) {} } }
 G.lock = lock;
 function pause(on) {
-  if (on && (G.state === 'play' || G.state === 'cutscene')) { G.prevState = G.state; G.state = 'paused'; $('pause').hidden = false; G.audio.ctx.suspend(); $('diag').textContent = `גרסה ${BUILD} · ${G.fps || '—'} fps · איכות ${['נמוכה', 'בינונית', 'גבוהה'][G.quality]} · רזולוציה ${Math.round(internalPR() / displayPR() * 100)}%`; }
+  if (on && (G.state === 'play' || G.state === 'cutscene')) { G.prevState = G.state; G.state = 'paused'; $('pause').hidden = false; G.audio.ctx.suspend(); $('diag').textContent = `גרסה ${BUILD} · ${G.fps || '—'} fps · איכות ${['נמוכה', 'בינונית', 'גבוהה'][G.quality]} · רזולוציה ${Math.round((G.isTouch ? dyn.scale : internalPR() / displayPR()) * 100)}%`; }
   else if (!on && G.state === 'paused') { G.state = G.prevState; $('pause').hidden = true; G.audio.resume(); lock(); G.clock.getDelta(); }
 }
 $('bstart').addEventListener('click', startBriefing);
@@ -294,6 +305,7 @@ function render() {
   uav.enabled = !!d; uav.uniforms.uIR.value = d && G.drone.ir ? 1 : 0; uav.uniforms.uT.value = G.time;
   if (vmPass) vmPass.enabled = !d && (G.state === 'play' || G.state === 'cutscene');
   if (d && G.crowd) G.crowd.setHot(!!G.drone.ir);
+  if (outPass) { outPass.enabled = uav.enabled || renderer.toneMapping !== THREE.CustomToneMapping || !!G.debug.noMerge; grade.uniforms.uOut.value = outPass.enabled ? 0 : 1; }
   composer.render();
   if (d && G.crowd) G.crowd.setHot(false);
 }
@@ -303,7 +315,16 @@ function frame() {
   if (G.debug.hold) return;
   if ((G.state === 'play' || G.state === 'cutscene') && dyn.update(rawDt * 1000)) resize();
   step(dt); render();
-  fpsN++; const now = performance.now(); if (now - fpsT > 1000) { const f = fpsN * 1000 / (now - fpsT); G.fps = Math.round(f); $('fps').textContent = G.fps + ' fps'; fpsN = 0; fpsT = now; if (!autoQ && G.state === 'play' && G.time > 10 && !G.debug.noAuto) { autoQ = true; if (f < 26 && G.quality > 0) applyQuality(G.quality - 1); } }
+  fpsN++; const now = performance.now(); if (now - fpsT > 1000) { const f = fpsN * 1000 / (now - fpsT); G.fps = Math.round(f); $('fps').textContent = G.fps + ' fps'; fpsN = 0; fpsT = now; if (!autoQ && G.state === 'play' && !G.debug.noAuto) autoQuality(f); }
+}
+// one automatic step down. Desktop: a single check once the mission runs. Phones: after 4 s of play, three seconds in a
+// row under 24 fps (one hitch while shaders warm up must not cost the shadows for the whole session), and only in the
+// first 40 s (later, dropping a level recompiles every shader in the middle of the incident)
+let playS = 0, slowS = 0;
+function autoQuality(f) {
+  if (!G.isTouch) { if (G.time > 10) { autoQ = true; if (f < 26 && G.quality > 0) applyQuality(G.quality - 1); } return; }
+  if (++playS <= 4) return; if (playS > 40) { autoQ = true; return; } slowS = f < 24 ? slowS + 1 : 0;
+  if (slowS >= 3) { autoQ = true; if (G.quality > 0) applyQuality(G.quality - 1); }
 }
 function step(dt) {
   const active = G.state === 'play' || G.state === 'cutscene';
@@ -315,6 +336,9 @@ function step(dt) {
   G.player.update(active && !(G.tablet && G.tablet.open) ? dt : 0);
   for (let i = G.actors.length - 1; i >= 0; i--) G.actors[i] && G.actors[i].update(dt);
   G.gear.pre(dt); G.weapon.update(dt); G.weapon.root.visible = active && G.weapon.root.visible && !(G.gear && G.gear.hideRifle);
+  // phones: far small props off the camera layer (core.js detailCull), measured from the camera in use (the drone's
+  // narrow lens keeps far things big); people and what they carry never
+  if (G.isTouch) detailCullTick(scene, activeCam(), dt, !G.debug.noCull);
   G.crowd.update(dt); G.gear.update(dt); G.fx.update(dt); updateWorld(dt); G.fsound.update(dt); if (G.birds) G.birds.update(dt); WIND.t.value = G.time;
   const cam = activeCam();
   G.audio.updateListener(camera); G.audio.update(dt); G.ui.update(dt); G.gear.hud(); G.guide.update(dt); G.tablet.update(dt); if (active) G.command.update(dt);

@@ -37,9 +37,14 @@ export class UpscalePass extends Pass {
   }
 }
 
-/** Dynamic resolution with a check that it helps. Call update(frameMs); it returns true when the scale changed. */
+/**
+ * Dynamic resolution with a check that it helps. Call update(frameMs); it returns true when the scale changed.
+ * key (phones): the scale the last session settled on is kept in localStorage and the next one starts there, so a slow
+ * phone does not stutter through its first ten seconds of play stepping down again (it still climbs back when it can).
+ */
 export class DynRes {
-  constructor() { this.scale = 1; this.ft = 16; this.t = 0; this.probe = null; this.hold = 0; }
+  constructor(key = null) { this.scale = 1; this.ft = 16; this.t = 0; this.probe = null; this.hold = 0; this.key = key;
+    if (key) try { const v = parseFloat(localStorage.getItem(key)); if (v >= .55 && v < 1) this.scale = Math.round(v * 20) / 20; } catch (e) {} }
   update(ms) {
     this.ft += (ms - this.ft) * .05; this.t += ms; if (this.t < 1500) return false; this.t = 0; this.hold = Math.max(0, this.hold - 1.5);
     const prev = this.scale;
@@ -48,6 +53,7 @@ export class DynRes {
       this.probe = null;
     } else if (this.ft > 27 && this.hold <= 0 && this.scale > .55) { this.probe = { from: this.scale, ft: this.ft }; this.scale = Math.max(.55, this.scale - .1); }
     else if (this.ft < 18 && this.scale < 1) this.scale = Math.min(1, this.scale + .05);
+    if (this.key && !this.probe && this.saved !== this.scale) { this.saved = this.scale; try { localStorage.setItem(this.key, this.scale); } catch (e) {} }
     return prev !== this.scale;
   }
 }

@@ -51,6 +51,8 @@ function box(w, h, d, m = 2) { // world-scaled UVs
 const at = (g, x, y, z, ry = 0) => { if (ry) g.rotateY(ry); g.translate(x, y, z); return g; };
 // a filled sandbag: a flattened, slightly bulging pillow (not a capsule)
 let _sb = null;
+// the same bag scaled from a caller's own RNG, for set dressing that must not draw from the global R
+function sbag(q) { if (!_sb) sandbag(); const g = _sb.clone(); g.scale(.94 + q() * .12, .9 + q() * .2, .95 + q() * .1); return g; }
 function sandbag() { if (!_sb) { const g = new THREE.BoxGeometry(.58, .17, .34, 4, 1, 3); const p = g.attributes.position; for (let i = 0; i < p.count; i++) { const x = p.getX(i) / .29, z = p.getZ(i) / .17, y = p.getY(i); const k = (1 - x * x * .35) * (1 - z * z * .45); p.setY(i, y * (.55 + .45 * k)); p.setX(i, p.getX(i) * (1 - Math.abs(y) * 1.2)); p.setZ(i, p.getZ(i) * (1 - Math.abs(y) * 1.4)); } g.computeVertexNormals(); _sb = g; } const g = _sb.clone(); g.scale(rr(.94, 1.06), rr(.9, 1.1), rr(.95, 1.05)); return g; }
 
 // ---------- materials ----------
@@ -76,9 +78,18 @@ function materials() {
   FM.tire = std({ color: '#191918', roughness: .92 });
   FM.tireBurnt = std({ color: '#0d0d0c', roughness: 1 });
   // tent canvas and tarps bleached by a summer of sun: off-white and a greyed blue, not fresh colours
-  FM.canvasW = std({ color: '#d4cdbd', roughness: .9, side: THREE.DoubleSide });
-  FM.canvasB = std({ color: '#4d6a82', roughness: .85, side: THREE.DoubleSide });
-  FM.canvasG = std({ color: '#7b7d5d', roughness: .9, side: THREE.DoubleSide });
+  // The texture covers 4 x 4 m of fabric (UVs in metres / 4, v = height): stitched panel seams, a band of dust and mud
+  // splashed up the bottom half-metre, darker drip lines below the ridge and eaves, sun-faded and patched panels.
+  const tentTex = canvasTex(256, 256, (g, W, H) => { const q = rng(6203); g.fillStyle = '#eeebe4'; g.fillRect(0, 0, W, H);
+    for (let i = 0; i < 5; i++) { const x = q() * W, y = q() * H * .8, w = 18 + q() * 40, h = 20 + q() * 50; g.fillStyle = q() < .5 ? 'rgba(255,252,244,.5)' : 'rgba(176,168,150,.35)'; g.fillRect(x, y, w, h); g.strokeStyle = 'rgba(90,84,70,.4)'; g.strokeRect(x, y, w, h); }
+    for (let x = 6; x < W; x += 77) { g.fillStyle = 'rgba(120,112,96,.55)'; g.fillRect(x, 0, 2, H); g.fillStyle = 'rgba(255,255,250,.5)'; g.fillRect(x + 3, 0, 1, H); }
+    for (let i = 0; i < 70; i++) { const x = q() * W, y = q() * H * .5, l = 20 + q() * 90, gr = g.createLinearGradient(0, y, 0, y + l); gr.addColorStop(0, 'rgba(110,98,78,.3)'); gr.addColorStop(1, 'rgba(110,98,78,0)'); g.fillStyle = gr; g.fillRect(x, y, 1 + q() * 3, l); }
+    const mud = g.createLinearGradient(0, H, 0, H - 40); mud.addColorStop(0, 'rgba(122,100,70,.85)'); mud.addColorStop(.5, 'rgba(140,118,86,.45)'); mud.addColorStop(1, 'rgba(150,130,96,0)'); g.fillStyle = mud; g.fillRect(0, H - 40, W, 40);
+    for (let i = 0; i < 260; i++) { const x = q() * W, y = H - Math.pow(q(), 2) * 46; g.fillStyle = `rgba(${100 + q() * 30 | 0},${84 + q() * 20 | 0},${60 + q() * 15 | 0},${.2 + q() * .4})`; g.beginPath(); g.ellipse(x, y, 1 + q() * 3, 1 + q() * 2, 0, 0, 7); g.fill(); }
+    for (let i = 0; i < 1200; i++) { const v = q() < .5 ? 0 : 255; g.fillStyle = `rgba(${v},${v},${v},.05)`; g.fillRect(q() * W, q() * H, 2, 2); } });
+  FM.canvasW = std({ map: tentTex, color: '#d8d1c1', roughness: .9, side: THREE.DoubleSide });
+  FM.canvasB = std({ map: tentTex, color: '#506c84', roughness: .85, side: THREE.DoubleSide });
+  FM.canvasG = std({ map: tentTex, color: '#7f8161', roughness: .9, side: THREE.DoubleSide });
   FM.wood = MAT.wood;
   FM.stone = std({ color: '#9b907c', roughness: .95 });
   FM.bush = std({ color: '#6f6a45', roughness: 1 });
@@ -101,8 +112,12 @@ function materials() {
   FM.mesh = new THREE.MeshStandardMaterial({ map: canvasTex(64, 256, (g, W, H) => { g.clearRect(0, 0, W, H); g.fillStyle = '#6f716c'; for (let x = 2; x < W; x += 16) g.fillRect(x, 0, 5, H); g.fillRect(0, 0, W, 6); g.fillRect(0, H * .5, W, 4); }), transparent: false, alphaTest: .5, roughness: .6, metalness: .6, side: THREE.DoubleSide });
   FM.mesh.map.colorSpace = THREE.SRGBColorSpace;
   // concertina: coiled razor wire read as loops on a cylinder
-  const ct = canvasTex(256, 128, (g, W, H) => { g.clearRect(0, 0, W, H); g.strokeStyle = '#8c8e88'; g.lineWidth = 2.2; for (let x = -20; x < W + 20; x += 11) { g.beginPath(); g.ellipse(x, H / 2, 8, H * .47, .12, 0, Math.PI * 2); g.stroke(); } });
-  FM.concertina = new THREE.MeshStandardMaterial({ map: ct, alphaTest: .35, roughness: .4, metalness: .8, side: THREE.DoubleSide });
+  // Galvanised razor wire left out for a few summers goes a dull, mottled zinc grey with brown rust where the coating has
+  // gone; it glints only in specks, never as a polished chrome tube (metalness .8 / roughness .4 lit the whole coil white
+  // against the low sun). The tone varies loop to loop so the coil has no uniform sheen.
+  const ct = canvasTex(256, 128, (g, W, H) => { g.clearRect(0, 0, W, H); const q = rng(66); g.lineWidth = 2;
+    for (let x = -20; x < W + 20; x += 11) { const v = 104 + q() * 40 | 0, ru = q() < .3; g.strokeStyle = ru ? `rgb(${v * .9 | 0},${v * .62 | 0},${v * .42 | 0})` : `rgb(${v},${v + 2},${v - 4})`; g.beginPath(); g.ellipse(x, H / 2, 8, H * .47, .12, 0, Math.PI * 2); g.stroke(); } });
+  FM.concertina = new THREE.MeshStandardMaterial({ map: ct, alphaTest: .35, roughness: .66, metalness: .45, color: '#c4c4bc', side: THREE.DoubleSide });
   FM.concertina.userData.noShadow = false;
   // camouflage net
   const cn = canvasTex(256, 256, (g, W, H) => { g.clearRect(0, 0, W, H); const cols = ['#5b5f3f', '#6d6a48', '#4a4d33', '#7e7556', '#3f4230']; for (let i = 0; i < 900; i++) { g.fillStyle = cols[i % cols.length]; g.beginPath(); const x = Math.random() * W, y = Math.random() * H, r = 3 + Math.random() * 7; g.ellipse(x, y, r, r * .6, Math.random() * 3, 0, 7); g.fill(); } });
@@ -137,14 +152,17 @@ function digitTex() {
 // bleeding from the lifting loop and from rebar stubs, drift sand at the foot and a stencilled number on the Israeli face.
 // The photo's own large blotches and bands are divided out (a blurred mip of the same patch), so only its pores remain
 // and the large-scale variation comes from the section, which is what reads from the berm.
+// Tyres are also burnt right against the Gaza face: a few sections carry a soot plume from the foot, widening as it rises
+// (own RNG, clear of the slits; the melted crusts at their feet are added in debris())
+const SOOT = (() => { const q = rng(4411), out = []; while (out.length < 8) { const z = (q() - .5) * (FL.wallZ * 2 - 6); if (FL.slits.every(s => Math.abs(z - s) > 2.5) && out.every(o => Math.abs(o - z) > 6)) out.push(z); } return out; })();
 function wallShader(m) {
-  const U = { tDig: { value: digitTex() }, uWQ: { get value() { return G.quality ?? 2; } } };
+  const U = { tDig: { value: digitTex() }, uWQ: { get value() { return G.quality ?? 2; } }, uSoot: { value: SOOT } };
   m.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, U);
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWw; varying vec3 vNw;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWw = (modelMatrix * vec4(transformed, 1.0)).xyz; vNw = normalize(mat3(modelMatrix) * objectNormal);');
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
-varying vec3 vWw; varying vec3 vNw; uniform sampler2D tDig; uniform float uWQ;
+varying vec3 vWw; varying vec3 vNw; uniform sampler2D tDig; uniform float uWQ; uniform float uSoot[8];
 float wH(float n) { return fract(sin(mod(n, 289.) * 91.345) * 47453.53); }
 float wH2(vec2 p) { vec3 p3 = fract(vec3(mod(p, 289.).xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 float wN(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f); return mix(mix(wH2(i), wH2(i + vec2(1., 0.)), f.x), mix(wH2(i + vec2(0., 1.)), wH2(i + vec2(1., 1.)), f.x), f.y); }`)
@@ -178,6 +196,9 @@ if (uWQ > .5) {
     wc = mix(wc, vec3(.25, .1, .035), clamp(s, 0., 1.) * .7 * wSide); }
 }
 wc *= (1. - wj * .5) * (1. - wtop * .22);
+if (vWw.x < -.1) { float so = 0.; for (int k = 0; k < 8; k++) { float dz = vWw.z - uSoot[k], sw = .25 + wy * .32 + .1 * wN(vec2(wy * 3., float(k)));
+  so = max(so, exp(-dz * dz / (sw * sw)) * (1. - smoothstep(.3, 2.6 + .9 * wH(float(k) + 3.), wy + (wN(vec2(vWw.z * 2.5, wy * 1.5)) - .5) * .8))); }
+  wc *= 1. - .78 * so; }
 vec2 wgx = vec2(-dFdx(vWw.z) * .6667, dFdx(wy) * 5.), wgy = vec2(-dFdy(vWw.z) * .6667, dFdy(wy) * 5.);
 if (vNw.x > .5 && abs(wy - 2.78) < .1 && abs(wu - .5) * 1.5 < .15) {
   float gx = (.15 - (wu - .5) * 1.5) / .3, num = wid + 1., dg = gx < .5 ? floor(num / 10.) : mod(num, 10.);
@@ -221,7 +242,10 @@ function regionMap() {
   // scorch marks: old tyre fires, burnt fields from incendiary balloons, trampled strip near the barrier
   const r = rng(21);
   for (let i = 0; i < 260; i++) { const x = -40 - r() * 520, z = (r() - .5) * 1200; const rad = 1 + r() * 4; g.fillStyle = `rgba(255,255,255,${.25 + r() * .5})`; g.beginPath(); g.ellipse(px(x), pz(z), rad, rad * (.6 + r() * .6), r() * 3, 0, 7); g.fill(); }
-  for (const [x, z] of FL.fires) { g.fillStyle = 'rgba(255,255,255,.9)'; g.beginPath(); g.arc(px(x), pz(z), 5, 0, 7); g.fill(); }
+  // a fire site is a black core of melted rubber and ash, a browner halo, and soot smeared downwind (east, the sea breeze)
+  for (const [x, z] of FL.fires) { const cx = px(x), cz = pz(z);
+    const sm = g.createRadialGradient(cx + 4, cz, 0, cx + 4, cz, 9); sm.addColorStop(0, 'rgba(255,255,255,.45)'); sm.addColorStop(1, 'rgba(255,255,255,0)'); g.save(); g.translate(cx + 4, cz); g.scale(1, .45); g.translate(-cx - 4, -cz); g.fillStyle = sm; g.fillRect(cx - 6, cz - 10, 20, 20); g.restore();
+    const gr = g.createRadialGradient(cx, cz, 0, cx, cz, 7); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(.35, 'rgba(255,255,255,.85)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.beginPath(); g.arc(cx, cz, 7, 0, 7); g.fill(); }
   for (let i = 0; i < 10; i++) { const x = 140 + r() * 380, z = (r() - .5) * 1400; g.fillStyle = `rgba(255,255,255,${.35 + r() * .3})`; g.beginPath(); g.ellipse(px(x), pz(z), 6 + r() * 16, 4 + r() * 10, r() * 3, 0, 7); g.fill(); }
   const sd = g.getImageData(0, 0, N, N).data;
   // Gaza side: the dirt road parallel to the fence, vehicle tracks from it to the camp and the stage, and the desire lines
@@ -334,6 +358,32 @@ function buildGround() {
 }
 
 // ---------- the barrier ----------
+// The firing slit is not a hole in bare concrete: a welded steel sleeve lines it through the full wall thickness (it is
+// what stops spall from a round hitting the edge), bolted to a 12 mm flange plate on the Israeli face, with an angle
+// iron lip on the Gaza face. Built as real plates with thickness so the low sun throws their edges into shadow.
+function slitSteel(T, z) {
+  const y = FL.slitY, hw = .12, hh = .09, f = (w, h, d, px, py, pz) => add(FM.frame, at(new THREE.BoxGeometry(w, h, d), px, py, z + pz));
+  f(T + .03, .008, 2 * hw, 0, y - hh + .004, 0); f(T + .03, .008, 2 * hw, 0, y + hh - .004, 0);
+  for (const s of [-1, 1]) f(T + .03, 2 * hh, .008, 0, y, s * (hw - .004));
+  const fx = T / 2 + .006; f(.012, .1, .46, fx, y + hh + .05, 0); f(.012, .1, .46, fx, y - hh - .05, 0);
+  for (const s of [-1, 1]) f(.012, 2 * hh, .11, fx, y, s * (hw + .055));
+  for (const s of [-1, 1]) { f(.03, .006, 2 * hw + .06, -T / 2 - .015, y + s * (hh + .003), 0); f(.03, 2 * hh + .06, .006, -T / 2 - .015, y, s * (hw + .003)); }
+  const bolt = new THREE.CylinderGeometry(.013, .013, .016, 6).rotateZ(Math.PI / 2);
+  for (const [by, bz] of [[.16, -.19], [.16, .19], [-.16, -.19], [-.16, .19], [0, -.2], [0, .2]]) add(FM.frame, bolt.clone().translate(fx + .012, y + by, z + bz));
+  // hinge knuckles welded to the flange either side of the shutter's own knuckle
+  const kn = new THREE.CylinderGeometry(.016, .016, .07, 8).rotateX(Math.PI / 2);
+  for (const s of [-1, 1]) { add(FM.frame, kn.clone().translate(T / 2 + .04, y + .12, z + s * .1)); f(.03, .02, .06, T / 2 + .024, y + .12, s * .1); }
+}
+// the shutter: a 20 mm plate with a welded stiffening rim, its knuckle on the hinge axis and a bent-bar handle
+let _shut = null;
+function shutterGeo() {
+  if (_shut) return _shut;
+  const b = (w, h, d, x, y, z) => new THREE.BoxGeometry(w, h, d).translate(x, y, z);
+  _shut = mergeGeometries([b(.02, .24, .3, 0, -.12, 0), b(.018, .02, .3, .018, -.235, 0), b(.018, .2, .02, .018, -.13, -.14), b(.018, .2, .02, .018, -.13, .14),
+    new THREE.CylinderGeometry(.016, .016, .12, 8).rotateX(Math.PI / 2),
+    b(.012, .012, .1, .06, -.2, 0), b(.05, .012, .012, .036, -.2, -.05), b(.05, .012, .012, .036, -.2, .05)].map(g => g.index ? g.toNonIndexed() : g));
+  return _shut;
+}
 function barrier() {
   const H = 3.6, T = .3, W = 1.5; const nSec = Math.round(FL.wallZ * 2 / W);
   G.slits = [];
@@ -350,12 +400,13 @@ function barrier() {
       add(FM.wall, at(box(T, H - y1, w, 2), 0, y1 + (H - y1) / 2, z), true);
       add(FM.wall, at(box(T, y1 - y0, w / 2 - hw, 2), 0, FL.slitY, z - (hw + (w / 2 - hw) / 2)), true);
       add(FM.wall, at(box(T, y1 - y0, w / 2 - hw, 2), 0, FL.slitY, z + (hw + (w / 2 - hw) / 2)), true);
-      for (const [dy, dz, ww, hh] of [[.1, 0, .32, .025], [-.1, 0, .32, .025], [0, .135, .025, .22], [0, -.135, .025, .22]]) add(FM.frame, at(new THREE.BoxGeometry(.03, hh, ww), T / 2 + .015, FL.slitY + dy, z + dz));
-      const sh = new THREE.Mesh(new THREE.BoxGeometry(.015, .24, .3), FM.frame); const hinge = new THREE.Group(); hinge.position.set(T / 2 + .04, FL.slitY + .12, z); sh.position.set(0, -.12, 0); hinge.add(sh); hinge.rotation.z = -1.35; G.scene.add(hinge); sh.castShadow = true;
+      slitSteel(T, z);
+      const sh = new THREE.Mesh(shutterGeo(), FM.frame); const hinge = new THREE.Group(); hinge.position.set(T / 2 + .04, FL.slitY + .12, z); sh.position.set(0, -.12, 0); hinge.add(sh); hinge.rotation.z = -1.35; G.scene.add(hinge); sh.castShadow = true;
       G.slits.push({ z: slit, pos: V3(T / 2 + .45, 0, slit), hole: V3(0, FL.slitY, slit), shutter: hinge, open: 1 });
     }
     add(FM.wall, at(box(1.35, .5, w, 2), .25, .25, z), true);                                       // T-wall footing (same precast piece)
-    add(FM.rust, at(new THREE.TorusGeometry(.08, .016, 4, 10, Math.PI), slit === undefined ? jx : 0, H + (slit === undefined ? jh : 0) + .01, z)); // rusted lifting loop
+    // two cast-in lifting loops per section (the crane's spreader takes both), each standing out of a small grouted pocket
+    { const lx = slit === undefined ? jx : 0, ly = H + (slit === undefined ? jh : 0); for (const dz of [-.43, .43]) { add(FM.rust, at(new THREE.TorusGeometry(.075, .014, 4, 8, Math.PI), lx, ly - .005, z + dz)); add(FM.concreteDark, at(box(.2, .012, .17, 1), lx, ly - .002, z + dz)); } }
   }
   // graffiti along the Gaza face
   const gp = new THREE.PlaneGeometry(FL.wallZ * 2, 2.6); gp.rotateY(-Math.PI / 2); gp.translate(-T / 2 - .012, 1.45, 0);
@@ -398,6 +449,23 @@ function berm() {
   G.bermNests = []; const top = FL.bermH;
   for (const z of [-58, -28, 36, 64]) { for (let a = -1.2; a <= 1.2; a += .3) for (let k = 0; k < 3; k++) add(FM.sandbag, at(sandbag(), FL.bermX - 1.3 - Math.cos(a) * 1.25, top + .05 + k * .17, z + Math.sin(a) * 1.35, a + Math.PI / 2 + (k % 2) * .15)); G.bermNests.push(V3(FL.bermX - .6, top, z)); }
 }
+// The grader that keeps the patrol road smooth pushes the spoil to both edges as a low, lumpy windrow of gravel and sand.
+// It breaks where the foot traffic crosses to the berm and thins out in places; same ground material, so it carries the
+// road's gravel and the sand's ripples; no collider (a 15 cm lump does not need one).
+function roadEdges() {
+  const pos = [], idx = []; const prof = [-1, -.6, -.25, 0, .3, .65, 1], NP = prof.length;
+  for (const [xc, hw, sd] of [[3.45, .55, 1], [11.65, .7, 2]]) {
+    let row = 0; const base = () => pos.length / 3;
+    for (let z = -142; z <= 142; z += .5) {
+      const gap = Math.min(...[-17.4, 18.6, -60, 52].map(c => Math.abs(z - c))), env = sstep(.6, 2.2, gap) * sstep(0, 4, 142 - Math.abs(z));
+      const h = .25 * env * (.45 + fbm(z * .09 + sd * 7, sd, 3)) * (.6 + .4 * Math.sin(z * .6 + sd)), w = hw * (.8 + .4 * fbm(z * .05, sd * 3, 2)), xo = (fbm(z * .02, sd * 5, 2) - .5) * .5;
+      const b = base(); for (let k = 0; k < NP; k++) { const u = prof[k], bump = Math.pow(Math.max(0, 1 - u * u), 1.3) * (1 + (fbm(z * .7 + k, sd, 2) - .5) * .5); pos.push(xc + xo + u * w, hF(xc + u * w, z) + h * bump - (Math.abs(u) > .99 ? .03 : 0), z); }
+      if (row++) for (let k = 0; k < NP - 1; k++) { const a = b - NP + k, c = b + k; idx.push(a, c, a + 1, a + 1, c, c + 1); }
+    }
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
+  const m = new THREE.Mesh(g, FM.ground); m.receiveShadow = true; G.scene.add(m);
+}
 export function hummer(x, z, ry, collide = true) {
   // static parts merged per material inside the group (5 draw calls instead of 14; the group still moves as one)
   const g = new THREE.Group(), parts = new Map(); const put = (m, geo) => { if (!parts.has(m)) parts.set(m, []); parts.get(m).push(geo); };
@@ -429,8 +497,17 @@ function commandPost() {
   G.colliders.push(at(new THREE.BoxGeometry(.6, .6, 12.6), x - 1.2, y + .3, z));
   // camouflage net on poles over the planning table
   const cx = x + 4;
-  const net = new THREE.Mesh(new THREE.PlaneGeometry(8, 7, 6, 5), FM.camo); net.rotation.x = -Math.PI / 2; const np = net.geometry.attributes.position; for (let i = 0; i < np.count; i++) np.setZ(i, -Math.abs(Math.sin(np.getX(i) * .7) * Math.cos(np.getY(i) * .8)) * .35); net.geometry.computeVertexNormals();
-  net.position.set(cx + .5, y + 2.7, z); net.castShadow = true; G.scene.add(net);
+  // the net hangs off the four pole tops and a centre spreader: it sags in catenary between them, and the skirt that
+  // overhangs the poles droops toward the ground on the east, north and south (the west skirt stays up: drooping, it
+// hung across the commander's view of the wall) (local frame: X east, Y north, Z up before the rotation)
+  const net = new THREE.Mesh(new THREE.PlaneGeometry(9.4, 8.2, 22, 18), FM.camo); net.rotation.x = -Math.PI / 2; { const np = net.geometry.attributes.position, nq = rng(3101);
+    const tops = [[-3.8, -3.2, 0], [3.8, -3.2, 0], [-3.8, 3.2, 0], [3.8, 3.2, 0], [0, 1.8, .3]];
+    for (let i = 0; i < np.count; i++) { const lx = np.getX(i), ly = -np.getY(i); let h = -9;
+      for (const [px, py, ph] of tops) { const d = Math.hypot(lx - px, ly - py); h = Math.max(h, ph - .12 * d * d / (1 + .35 * d)); }
+      const ox = Math.max(0, lx - 3.8), oy = Math.max(0, Math.abs(ly) - 3.2), over = Math.hypot(ox, oy);
+      h = Math.max(h, -.75) - Math.min(over, .8) * .7 + (nq() - .5) * .05; np.setZ(i, h); } net.geometry.computeVertexNormals(); }
+  net.position.set(cx + .5, y + 2.7, z); net.castShadow = true; net.receiveShadow = true; G.scene.add(net);
+  add(FM.oliveDark, at(new THREE.CylinderGeometry(.035, .045, 3.0, 6), cx + .5, y + 1.5, z + 1.8));
   for (const [dx, dz] of [[-3.3, -3.2], [4.3, -3.2], [-3.3, 3.2], [4.3, 3.2]]) add(FM.oliveDark, at(new THREE.CylinderGeometry(.04, .05, 2.7, 6), cx + dx, y + 1.35, z + dz), true);
   add(FM.olive, at(box(2.2, .06, 1.1, 1), cx, y + .9, z), true); for (const [dx, dz] of [[-1, -.5], [1, -.5], [-1, .5], [1, .5]]) add(FM.steelDark, at(new THREE.CylinderGeometry(.02, .02, .9, 5), cx + dx, y + .45, z + dz));
   const map = new THREE.Mesh(new THREE.PlaneGeometry(1.2, .8), new THREE.MeshStandardMaterial({ map: canvasTex(256, 170, (g, W, H) => { g.fillStyle = '#d8d2bc'; g.fillRect(0, 0, W, H); g.strokeStyle = '#3a5a8a'; g.lineWidth = 3; g.beginPath(); g.moveTo(W * .45, 0); g.lineTo(W * .45, H); g.stroke(); g.strokeStyle = '#b03a2a'; g.setLineDash([6, 4]); g.beginPath(); g.moveTo(W * .35, 0); g.lineTo(W * .35, H); g.stroke(); g.fillStyle = '#b03a2a'; for (let i = 0; i < 20; i++) g.fillRect(Math.random() * W * .35, Math.random() * H, 4, 4); g.strokeStyle = 'rgba(0,0,0,.25)'; g.setLineDash([]); g.lineWidth = 1; for (let i = 0; i < W; i += 20) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i, H); g.stroke(); } }), roughness: .9 }));
@@ -443,6 +520,19 @@ function commandPost() {
   const flagT = canvasTex(192, 128, (g, W, H) => { g.fillStyle = '#f3f3f0'; g.fillRect(0, 0, W, H); g.fillStyle = '#1f3f9a'; g.fillRect(0, H * .1, W, H * .13); g.fillRect(0, H * .77, W, H * .13); g.strokeStyle = '#1f3f9a'; g.lineWidth = 6; for (const r of [0, Math.PI]) { g.beginPath(); for (let i = 0; i < 3; i++) { const a = r + i * Math.PI * 2 / 3 - Math.PI / 2; g[i ? 'lineTo' : 'moveTo'](W / 2 + Math.cos(a) * 26, H / 2 + Math.sin(a) * 26); } g.closePath(); g.stroke(); } }, { repeat: false });
   add(FM.steel, at(new THREE.CylinderGeometry(.025, .03, 5, 6), x + 1, y + 2.5, z + 6.4));
   const fl = new THREE.Mesh(new THREE.PlaneGeometry(1.3, .87, 10, 1), new THREE.MeshStandardMaterial({ map: flagT, side: THREE.DoubleSide, roughness: .8 })); fl.position.set(x + 1, y + 4.5, z + 6.4 + .65); fl.rotation.y = Math.PI / 2; fl.castShadow = true; G.scene.add(fl); G.flags = [fl];
+  // pad clutter (own RNG, no colliders, all east of the table so the view west stays clear): the mast stands in a ring of
+  // sandbags and carries a crossed dipole; a coax run droops from it to the radios; olive ammunition and ration crates
+  // are stacked by the net's back poles; the radios on the table have their whips up
+  { const q = rng(3102), mx = x + 7.5, mz = z - 3.5;
+    for (let k = 0; k < 2; k++) for (let a = 0; a < 6.28; a += .62) add(FM.sandbag, at(sbag(q), mx + Math.cos(a + k * .3) * .55, y + .08 + k * .16, mz + Math.sin(a + k * .3) * .55, -a + Math.PI / 2));
+    for (const a of [0, Math.PI / 2]) add(FM.steelDark, at(new THREE.CylinderGeometry(.012, .012, 1.6, 4).rotateZ(Math.PI / 2), mx, y + 8.3, mz, a));
+    add(FM.black, at(box(.12, .12, .08, 1), mx, y + 8.3, mz));
+    const cab = []; const P0 = new THREE.Vector3(mx, y + 7.9, mz), P1 = new THREE.Vector3(cx + .6, y + 1.1, z + .45);
+    for (let i = 0; i < 12; i++) { const a = i / 12, b = (i + 1) / 12, pt = t => new THREE.Vector3().lerpVectors(P0, P1, t).add(new THREE.Vector3(0, -Math.sin(t * Math.PI) * .9, 0)); cab.push(pt(a), pt(b)); }
+    add(FM.black, cableGeometry(cab, .008));
+    for (let i = 0; i < 3; i++) add(FM.black, at(new THREE.CylinderGeometry(.004, .007, 1.1, 4), cx + .7 - i * .4, y + 1.7, z + .38));
+    for (const [bx, bz, n] of [[x + 7.6, z + 1.2, 6], [x + 7.9, z - .2, 4], [x + 3.2, z - 3.6, 3]]) for (let i = 0; i < n; i++) { const L = i % 2 ? .45 : .62, hy = (i >> 1) * .3; const g = new THREE.BoxGeometry(L, .28, .34); add(FM.ammo, at(g, bx + (q() - .5) * .06, y + .14 + hy, bz + (i % 2) * .36 + (q() - .5) * .06, (q() - .5) * .15)); }
+  }
   G.cpTable = V3(cx, y + .95, z);
 }
 function tankRamps() {
@@ -521,8 +611,9 @@ function debris() {
   const crust = new THREE.TorusGeometry(.3, .08, 4, 12); crust.rotateX(Math.PI / 2); crust.scale(1, .32, 1); { const p = crust.attributes.position, jr = rng(77); for (let i = 0; i < p.count; i++) p.setXYZ(i, p.getX(i) * (1 + (jr() - .5) * .25), p.getY(i) * (.6 + jr() * .8), p.getZ(i) * (1 + (jr() - .5) * .25)); crust.computeVertexNormals(); }
   const bead = mergeGeometries([new THREE.TorusGeometry(.31, .007, 3, 18), new THREE.TorusGeometry(.3, .007, 3, 18).rotateY(.25).translate(0, .06, 0)]); bead.rotateX(Math.PI / 2 - .1);
   const burnt = []; for (let i = 0; i < 140; i++) { const f = i < 60 ? FL.fires[i % FL.fires.length] : null; const x = f ? f[0] + qr(-5, 5) : qr(-45, -6), z = f ? f[1] + qr(-5, 5) : qr(-110, 110); burnt.push([x, z, q() * 6, qr(.8, 1.15)]); }
+  { const sq = rng(4412); for (const z of SOOT) for (let k = 0; k < 2; k++) burnt.push([-.5 - sq() * .6, z + (sq() - .5) * .8, sq() * 6, .8 + sq() * .3]); }
   inst(crust, FM.tireBurnt, burnt.length, (o, i) => { const [x, z, a, s] = burnt[i]; ground(o, x, z, .01); o.rotation.y = a; o.scale.setScalar(s); });
-  inst(bead, FM.rust, burnt.length, (o, i) => { const [x, z, a, s] = burnt[i]; if (i % 3 === 2) return false; ground(o, x + .15, z - .1, .03); o.rotation.set(qr(-.15, .15), a, qr(-.15, .15)); o.scale.setScalar(s); });
+  inst(bead, FM.rust, burnt.length, (o, i) => { const [x, z, a, s] = burnt[i]; if (i % 3 === 2 || i >= 140) return false; ground(o, x + .15, z - .1, .03); o.rotation.set(qr(-.15, .15), a, qr(-.15, .15)); o.scale.setScalar(s); });
   // cans and bottles, faded by the sun; mostly on the Gaza side where the crowd gathers, a few on the patrol road
   const can = new THREE.CylinderGeometry(.033, .033, .12, 7); can.rotateZ(Math.PI / 2);
   const pal = ['#a83b2c', '#3c6a3a', '#b9b7ae', '#34598a', '#d8d4c8', '#c9772e', '#e0dccf', '#8fb0b8'];
@@ -535,11 +626,32 @@ function debris() {
 }
 function tents() {
   const [x0, x1] = FL.tents; const r = rng(9);
-  const tentGeo = (w, d, h) => { const s = new THREE.Shape(); s.moveTo(-w / 2, 0); s.lineTo(-w / 2, h * .55); s.lineTo(0, h); s.lineTo(w / 2, h * .55); s.lineTo(w / 2, 0); const g = new THREE.ExtrudeGeometry(s, { depth: d, bevelEnabled: false }); g.translate(0, 0, -d / 2); return g; };
+  // A pole-and-rope tent, not an extruded prism: the fabric sags between the ridge poles and bellies in and out on the
+  // walls between the uprights, the eave line droops, the gables are flat (stretched by the end poles); guy ropes run
+  // from the eaves to pegs. Shapes come from the tent's own size, so the global random sequence is untouched.
+  const ropes = [];
+  const tentGeo = (w, d, h) => {
+    const P = [[-w / 2, 0], [-w / 2 * .98, h * .55], [0, h], [w / 2 * .98, h * .55], [w / 2, 0]], prof = [];
+    for (let i = 0; i < 4; i++) for (let k = 0; k < 3; k++) { const t = k / 3; prof.push([P[i][0] + (P[i + 1][0] - P[i][0]) * t, P[i][1] + (P[i + 1][1] - P[i][1]) * t, i === 1 || i === 2 ? 1 : 0, Math.sin(Math.PI * t) * (i === 0 || i === 3 ? 1 : 0)]); }
+    prof.push([...P[4], 0, 0]);
+    const nb = Math.max(2, Math.round(d / 3.5)), nz = nb * 4, pos = [], uv = [], idx = [], np = prof.length;
+    for (let j = 0; j <= nz; j++) { const zz = -d / 2 + d * j / nz, bay = Math.sin(Math.PI * ((j % 4) / 4));
+      for (let k = 0; k < np; k++) { const [px, py, roof, wall] = prof[k], ridge = Math.abs(px) < .01 ? .35 : 1, eave = Math.abs(py - h * .55) < .01 ? .5 : 1;
+        const sag = roof * bay * .16 * ridge * eave + (eave < 1 ? bay * .06 : 0), bel = wall * bay * .09 * Math.sin(j * 1.7 + k);
+        pos.push(px + Math.sign(px) * bel, py - sag, zz); uv.push(zz / 4, py / 4); } }
+    for (let j = 0; j < nz; j++) for (let k = 0; k < np - 1; k++) { const a = j * np + k, b = a + np; idx.push(a, b, a + 1, a + 1, b, b + 1); }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
+    const s = new THREE.Shape(); P.forEach(([px, py], i) => s[i ? 'lineTo' : 'moveTo'](px, py)); const caps = [-1, 1].map(sg => { const c = new THREE.ShapeGeometry(s); const u = c.attributes.uv, p = c.attributes.position; for (let i = 0; i < u.count; i++) u.setXY(i, p.getX(i) / 4, p.getY(i) / 4); return c.translate(0, 0, sg * d / 2); });
+    return mergeGeometries([g.toNonIndexed(), ...caps.map(c => c.toNonIndexed())]);
+  };
+  const guy = (x, z, ry, w, d, h) => { const c = Math.cos(ry), s = Math.sin(ry), y0 = hF(x, z); const nb = Math.max(2, Math.round(d / 3.5));
+    for (let j = 0; j <= nb; j++) for (const sd of [-1, 1]) { const lz = -d / 2 + d * j / nb, ex = sd * w / 2, gx = sd * (w / 2 + 1.6);
+      const A = new THREE.Vector3(x + ex * c + lz * s, y0 + h * .55, z - ex * s + lz * c), B = new THREE.Vector3(x + gx * c + lz * s, y0, z - gx * s + lz * c), M = A.clone().lerp(B, .5); M.y -= .05; ropes.push(A, M, M, B); } };
   for (let i = 0; i < 12; i++) {
     const x = x0 + r() * (x1 - x0), z = -FL.tentZ + i * FL.tentZ * 2 / 11 + rr(-5, 5); const w = rr(5, 9), d = rr(7, 12), h = rr(2.6, 3.6);
-    add(pick([FM.canvasW, FM.canvasW, FM.canvasB, FM.canvasG]), at(tentGeo(w, d, h), x, hF(x, z), z, rr(-.2, .2)));
+    const m = pick([FM.canvasW, FM.canvasW, FM.canvasB, FM.canvasG]), ry = rr(-.2, .2); add(m, at(tentGeo(w, d, h), x, hF(x, z), z, ry)); guy(x, z, ry, w, d, h);
   }
+  add(FM.stone, cableGeometry(ropes, .007));
   // stage with a banner and loudspeakers
   const { x, z } = FL.stage; const y = hF(x, z);
   add(FM.wood, at(box(6, 1.1, 10, 2), x, y + .55, z));
@@ -561,7 +673,13 @@ function hamasPosts() {
     add(FM.steelDark, at(new THREE.CylinderGeometry(.04, .05, 4, 6), x + 1.6, y + 11.9, z + 1.6));
     const fl = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1, 10, 1), new THREE.MeshStandardMaterial({ map: canvasTex(160, 100, (g, W, H) => { g.fillStyle = '#1f7a3a'; g.fillRect(0, 0, W, H); g.fillStyle = '#f2f2ea'; g.font = '700 22px "Noto Kufi Arabic", sans-serif'; g.textAlign = 'center'; g.fillText('لا إله إلا الله', W / 2, H / 2 + 8); }, { repeat: false }), side: THREE.DoubleSide, roughness: .8 }));
     fl.position.set(x + 1.6, y + 13.3, z + 2.4); fl.rotation.y = Math.PI / 2; G.scene.add(fl); G.flags.push(fl);
-    for (let i = -3; i <= 3; i++) add(FM.sandbag, at(box(.6, .9, .9, 1), x + 5, y + .45, z + i * .9));
+    // a real bag wall (two skins, staggered courses) in place of solid blocks; a corrugated sheet roof weighted with
+    // tyres over the cabin, and a faded tarp screen tied over the Israel-facing windows to hide who is watching (own RNG)
+    { const q = rng(7300 + Math.round(z)); for (let k = 0; k < 5; k++) for (let i = 0; i < 11; i++) for (const dx of [-.17, .17]) add(FM.sandbag, at(sbag(q), x + 5 + dx + (q() - .5) * .04, y + .08 + k * .16, z - 3.1 + i * .58 + (k % 2) * .29, Math.PI / 2 + (q() - .5) * .2));
+      const rf = new THREE.PlaneGeometry(4.9, 4.9, 28, 1); rf.rotateX(-Math.PI / 2); { const rp = rf.attributes.position; for (let i = 0; i < rp.count; i++) rp.setY(i, Math.abs(Math.sin(rp.getX(i) * Math.PI / .15)) * .03 + rp.getZ(i) * .06); rf.computeVertexNormals(); }
+      add(FM.rust, at(rf, x, y + 10.02, z, q() * .2)); for (let i = 0; i < 3; i++) add(FM.tire, at(new THREE.TorusGeometry(.32, .12, 5, 10).rotateX(Math.PI / 2), x + (q() - .5) * 3, y + 10.2, z + (q() - .5) * 3));
+      const tp = new THREE.PlaneGeometry(3.6, 1.6, 8, 4); tp.rotateY(Math.PI / 2); { const p2 = tp.attributes.position; for (let i = 0; i < p2.count; i++) { const v = (p2.getY(i) + .8) / 1.6, u = (p2.getZ(i) + 1.8) / 3.6; p2.setX(i, Math.sin(u * Math.PI * 3) * .06 * (1 - v) + (1 - v) * .12); p2.setY(i, p2.getY(i) - Math.sin(u * Math.PI * 3) * .05 * (1 - v)); } tp.computeVertexNormals(); }
+      add(FM.canvasG, at(tp, x + 2.13, y + 9.1, z)); }
     G.posts.push({ ...P, pos: V3(x, y + 9, z), alive: true, manned: true });
   }
   // weapons depot compound (the kind of target struck that night)
@@ -587,6 +705,34 @@ function hazeFar(objs) {
     m.customProgramCacheKey = () => key + '|haze'; };
   for (const o of objs) o.traverse(c => { if (c.isMesh) [].concat(c.material).forEach(wrap); });
 }
+// What makes the Gaza City skyline read from the border at 1.2-1.8 km is not more boxes but different silhouettes:
+// slender minarets with one or two balconies, the concrete "mushroom" water towers and steel tanks on legs, unfinished
+// blocks that stop at a bare slab with columns and rebar sticking up (building halted for want of cement), and a tower
+// crane or two. Own RNG; merged into one mesh per material (not the 120 m chunks), so the whole lot is a handful of draws.
+function skyline() {
+  const q = rng(4243), qr = (a, b) => a + (b - a) * q(), parts = new Map(); const put = (m, g) => { if (!parts.has(m)) parts.set(m, []); parts.get(m).push(g.index ? g.toNonIndexed() : g); };
+  const spot = () => { const cz = qr(-850, 850); return [-1250 - q() * 480 - Math.abs(cz) * .15, cz]; };
+  const free = (x, z) => Math.abs(z - FL.depot.z) > 70 || Math.abs(x - FL.depot.x) > 100;
+  for (let i = 0; i < 7; i++) { const [x, z] = spot(); if (!free(x, z)) continue; const y = hF(x, z), H = qr(24, 38), r = qr(.9, 1.3);
+    put(MAT.plasterWhite, new THREE.CylinderGeometry(r, r * 1.15, H, 8).translate(x, y + H / 2, z));
+    for (const f of q() < .5 ? [.62, .84] : [.8]) put(FM.concrete, new THREE.CylinderGeometry(r + .55, r + .2, .7, 8).translate(x, y + H * f, z));
+    put(MAT.plasterWhite, new THREE.CylinderGeometry(r * .7, r * .7, 3, 8).translate(x, y + H + 1.5, z));
+    put(q() < .5 ? FM.oliveDark : FM.concreteDark, new THREE.ConeGeometry(r * .85, qr(2.5, 4.5), 8).translate(x, y + H + 3 + 1.5, z));
+    if (q() < .6) { const dx = qr(-12, -6); put(FM.concrete, box(qr(12, 18), qr(6, 9), qr(12, 18), 3).translate(x + dx, y + 3.5, z + qr(-4, 4))); put(MAT.plasterWhite, new THREE.SphereGeometry(qr(4, 6), 12, 6, 0, Math.PI * 2, 0, Math.PI / 2).translate(x + dx, y + 7.5, z)); } }
+  for (let i = 0; i < 8; i++) { const [x, z] = spot(); if (!free(x, z)) continue; const y = hF(x, z), H = qr(16, 26);
+    if (q() < .55) { put(FM.concrete, new THREE.CylinderGeometry(1.3, 1.6, H, 8).translate(x, y + H / 2, z)); put(FM.concrete, new THREE.ConeGeometry(4.2, 3, 10).rotateX(Math.PI).translate(x, y + H + 1.5, z)); put(FM.concrete, new THREE.CylinderGeometry(4.4, 4.2, 4, 10).translate(x, y + H + 5, z)); }
+    else { const R0 = qr(2.2, 3.2); for (const [a, b] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) put(FM.steelDark, box(.25, H, .25, 3).translate(x + a * R0 * .8, y + H / 2, z + b * R0 * .8)); put(FM.steelDark, box(R0 * 1.7, .25, R0 * 1.7, 3).translate(x, y + H * .5, z)); put(FM.rust, new THREE.CylinderGeometry(R0, R0, R0 * 1.4, 10).translate(x, y + H + R0 * .7, z)); } }
+  for (let i = 0; i < 12; i++) { const [x, z] = spot(); if (!free(x, z)) continue; const y = hF(x, z), w = qr(12, 20), d = qr(10, 16), nf = 4 + Math.floor(q() * 6), fh = 3.1, ry = q() < .5 ? 0 : Math.PI / 2, done = Math.floor(q() * 3);
+    const rot = g => g.rotateY(ry).translate(x, y, z);
+    for (let f = 1; f <= nf; f++) put(FM.concreteDark, rot(box(w, .28, d, 3).translate(0, f * fh, 0)));
+    if (done) put(FM.concrete, rot(box(w - .2, done * fh, d - .2, 3).translate(0, done * fh / 2, 0)));
+    const cx = Math.max(2, Math.round(w / 4.5)), cz = Math.max(2, Math.round(d / 4.5));
+    for (let a = 0; a <= cx; a++) for (let b = 0; b <= cz; b++) { const px = -w / 2 + .3 + a * (w - .6) / cx, pz = -d / 2 + .3 + b * (d - .6) / cz; put(FM.concrete, rot(box(.4, nf * fh, .4, 3).translate(px, nf * fh / 2, pz))); if (q() < .8) put(FM.rust, rot(box(.06, 1.1, .06, 3).translate(px, nf * fh + .55, pz))); }
+    if (q() < .5) put(FM.concrete, rot(box(.2, fh, d * .6, 3).translate(-w / 2 + .1, nf * fh - fh / 2, 0))); }
+  { const [x, z] = [-1330, -360], y = hF(x, z), H = 42; put(FM.rust, box(1.6, H, 1.6, 3).translate(x, y + H / 2, z)); put(FM.rust, box(46, 1.4, 1.2, 3).translate(x + 8, y + H + 1, z)); put(FM.concreteDark, box(4, 2.4, 2, 3).translate(x - 13, y + H, z)); put(FM.steelDark, box(1.8, 1.8, 1.8, 3).translate(x + 1, y + H - 1, z));
+    put(FM.steelDark, new THREE.CylinderGeometry(.03, .03, 18, 3).translate(x + 22, y + H - 8, z)); }
+  for (const [m, list] of parts) { const g = mergeGeometries(list.map(g => { for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(k)) g.deleteAttribute(k); return g; })); const me = new THREE.Mesh(g, m); me.receiveShadow = true; G.scene.add(me); }
+}
 function town() {
   const n0 = G.scene.children.length;
   const r = rng(40); const list = [];
@@ -600,6 +746,7 @@ function town() {
   const mx = -1270, mz = 180, my = hF(mx, mz);
   add(FM.concrete, at(box(18, 7, 18, 2), mx, my + 3.5, mz)); add(MAT.plasterWhite, at(new THREE.SphereGeometry(6, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), mx, my + 7, mz));
   add(MAT.plasterWhite, at(new THREE.CylinderGeometry(1.1, 1.3, 32, 10), mx + 11, my + 16, mz + 8)); add(MAT.plasterWhite, at(new THREE.CylinderGeometry(1.8, 1.8, .6, 12), mx + 11, my + 26, mz + 8)); add(FM.oliveDark, at(new THREE.ConeGeometry(1.2, 4, 10), mx + 11, my + 34, mz + 8));
+  skyline();
   palmTrees([[-640, -260, 9], [-655, -232, 10], [-705, 212, 8], [-590, 240, 11], [-760, -40, 9], [-780, 20, 10], [-470, -380, 8], [-520, 330, 9], [-860, 150, 10], [-900, -120, 9], [-980, 300, 10]]);
   flush(); hazeFar(G.scene.children.slice(n0));
 }
@@ -648,6 +795,7 @@ export function buildFenceWorld() {
   buildGround();
   barrier();
   berm();
+  roadEdges();
   commandPost();
   tankRamps();
   scatter();

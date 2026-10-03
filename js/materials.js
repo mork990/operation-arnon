@@ -91,12 +91,15 @@ float h21(vec2 p){p=fract(p*vec2(233.34,851.73));p+=dot(p,p+23.45);return fract(
   diffuseColor.rgb*=mix(1.,mix(.84,1.03,smoothstep(.5,9.,wp.y)),vert);
   // dirty water: streak columns of uneven length under every slab lip (3.4 m ground floor, then 3 m storeys), the
   // parapet coping and each sill, heaviest off the sill ends where the drips gather
-  float cn=${hq ? 'clamp(texture2D(tN,vec2(fp.x*.13,fp.y*.01)).a*.5+texture2D(tN,vec2(fp.x*.047+.3,fp.y*.006)).a*1.4,0.,1.)' : 'clamp(texture2D(tN,vec2(fp.x*.047+.3,fp.y*.006)).a*1.8,0.,1.)'};
+  // at range the streak columns and the drips off the sill ends shrink to a pixel and read as pinstripes: both widen with
+  // the pixel footprint (mip bias on the column mask, a wider, fainter gaussian for the drips) and fade into a soft wash
+  float sfw=fwidth(fp.x), sB=clamp(log2(sfw/.012),0.,5.);
+  float cn=${hq ? 'clamp(texture2D(tN,vec2(fp.x*.13,fp.y*.01),sB).a*.5+texture2D(tN,vec2(fp.x*.047+.3,fp.y*.006),sB).a*1.4,0.,1.)' : 'clamp(texture2D(tN,vec2(fp.x*.047+.3,fp.y*.006),sB).a*1.8,0.,1.)'};
   float cl=${hq ? '.5+1.8*texture2D(tN,vec2(fp.x*.13+.5,.37)).b' : '.5+1.8*nH.r'};
   float ys=3.4+3.*max(ceil((wp.y-3.4)/3.),0.), st=exp(-(ys-wp.y)/(.7*cl))*.8*cn;
   if(tg>.5){ float dr=vWx.w-wp.y; st+=exp(-max(dr,0.)/(1.6*cl+1.2))*step(0.,dr)*1.2*cn;
     if(vWx.y>.5){ float cw=(fp.x+vWx.z)/vWx.y, dx=abs(fract(cw)-.5)*vWx.y, sl=4.4+3.*max(ceil((wp.y-4.4)/3.),0.);
-      float e=(dx-.64)/.11; if(sl<vWx.w-2.7) st+=(exp(-e*e)*1.2+(1.-smoothstep(.55,.78,dx))*.55)*(.45+.55*cn)*exp(-(sl-wp.y)/(1.1*cl));
+      float ew=max(.11,sfw*3.), e=(dx-.64)/ew; if(sl<vWx.w-2.7) st+=(exp(-e*e)*1.2*.11/ew+(1.-smoothstep(.55,.78,dx))*.55)*(.45+.55*cn)*exp(-(sl-wp.y)/(1.1*cl));
       // soot over a window where a family cooks on a wood fire or a generator exhausts
       float sb=4.4+3.*floor((wp.y-4.4)/3.), a=wp.y-sb-1.3;
       if(sb>4. && sb<vWx.w-2.7 && a>0. && h21(vec2(floor(cw),sb)+bh*31.)<.2){ float so=(1.-smoothstep(.1,1.7,a))*(1.-smoothstep(.3+a*.3,.62+a*.45,dx+(nH.r-.5)*.25));
@@ -107,7 +110,7 @@ float h21(vec2 p){p=fract(p*vec2(233.34,851.73));p+=dot(p,p+23.45);return fract(
   diffuseColor.rgb*=mix(vec3(1.),vec3(.6,.61,.58),damp*.85*min(age,1.2));
   float tide=smoothstep(dT-.06,dT+.04,wp.y)*(1.-smoothstep(dT+.04,dT+.26,wp.y))*vert*smoothstep(.3,.7,nH.g);
   diffuseColor.rgb=mix(diffuseColor.rgb,vec3(dot(diffuseColor.rgb,vec3(.3,.59,.11)))*1.12+.04,tide*.5);` : `// rain / water streaks from slabs and sills
-  float st=texture2D(tN,vec2(fp.x*.23,fp.y*.018)).a*uStreak; float band=fract(wp.y/3.)*(1.-smoothstep(2.4,3.,fract(wp.y/3.)*3.));
+  float st=texture2D(tN,vec2(fp.x*.23,fp.y*.018),clamp(log2(fwidth(fp.x)/.008),0.,5.)).a*uStreak; float band=fract(wp.y/3.)*(1.-smoothstep(2.4,3.,fract(wp.y/3.)*3.));
   diffuseColor.rgb*=1.-st*.33*vert*(.5+.5*band);
   // grime at the base
   float gr=(1.-smoothstep(.0,1.3+nM.g*.8,wp.y))*vert; diffuseColor.rgb=mix(diffuseColor.rgb,diffuseColor.rgb*vec3(.72,.64,.54),gr*.75);`}

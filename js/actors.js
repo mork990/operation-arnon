@@ -1,7 +1,7 @@
 // Characters: model instancing, locomotion, rifle IK, hit boxes, AI (guards, fighters, team, hostages, civilians)
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { G, rr, R, pick, clamp, lerp, angleLerp, bus, after } from './core.js';
+import { G, rr, R, pick, clamp, lerp, angleLerp, bus, after, rng } from './core.js';
 import { A } from './assets.js';
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _m = new THREE.Matrix4();
@@ -78,22 +78,126 @@ function localDress(root, seed) {
     if (!o.isMesh) return;
     const swap = m => {
       const n = (m.name || '').toLowerCase();
-      if (n.includes('keffiyeh')) { const c = m.clone(); c.onBeforeCompile = sh => { sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
+      if (n.includes('keffiyeh')) { const c = m.clone(), L = lookOf.get(m); c.onBeforeCompile = sh => { if (L) lookPatch(L.role, c, L.dirt)(sh); sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
         { float red = clamp((diffuseColor.r - max(diffuseColor.g, diffuseColor.b)) * 4., 0., 1.); float l = dot(diffuseColor.rgb, vec3(.3, .59, .11));
-          diffuseColor.rgb = ${plain ? 'vec3(l * 1.05 + .08)' : 'mix(vec3(l * 1.1 + .05), vec3(.035), red)'}; }`); }; c.customProgramCacheKey = () => plain ? 'kufiyaW' : 'kufiya'; return c; }
-      if (n.includes('body')) { const c = m.clone(); const u = { uDress: { value: tint } }; c.onBeforeCompile = sh => { sh.uniforms.uDress = u.uDress; sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec3 uDress;').replace('#include <map_fragment>', `#include <map_fragment>
+          diffuseColor.rgb = ${plain ? 'vec3(l * 1.05 + .08)' : 'mix(vec3(l * 1.1 + .05), vec3(.035), red)'}; }`); }; c.customProgramCacheKey = () => (plain ? 'kufiyaW' : 'kufiya') + (L ? 'L' : ''); return c; }
+      if (n.includes('body')) { const c = m.clone(), L = lookOf.get(m); const u = { uDress: { value: tint } }; c.onBeforeCompile = sh => { if (L) lookPatch(L.role, c, L.dirt)(sh); sh.uniforms.uDress = u.uDress; sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec3 uDress;').replace('#include <map_fragment>', `#include <map_fragment>
         { float mn = min(min(diffuseColor.r, diffuseColor.g), diffuseColor.b), mx = max(max(diffuseColor.r, diffuseColor.g), diffuseColor.b);
-          float cloth = smoothstep(.1, .28, mn) * (1. - smoothstep(.05, .14, (mx - mn) / max(mx, .01))); diffuseColor.rgb = mix(diffuseColor.rgb, vec3(dot(diffuseColor.rgb, vec3(.33))) * uDress * 1.5, cloth); }`); }; /* linear values: a white thobe's albedo is only ~.3-.6 here */ c.customProgramCacheKey = () => 'galabiya'; return c; }
+          float cloth = smoothstep(.1, .28, mn) * (1. - smoothstep(.05, .14, (mx - mn) / max(mx, .01))); diffuseColor.rgb = mix(diffuseColor.rgb, vec3(dot(diffuseColor.rgb, vec3(.33))) * uDress * 1.5, cloth); }`); }; /* linear values: a white thobe's albedo is only ~.3-.6 here */ c.customProgramCacheKey = () => 'galabiya' + (L ? 'L' : ''); return c; }
       return m;
     };
     o.material = Array.isArray(o.material) ? o.material.map(swap) : swap(o.material);
   });
 }
+// ---------- character look ----------
+// The Rocketbox people ship one colour and one normal map per part and a flat .85 roughness, so skin, cloth and kit
+// all answer light the same way: chalky faces, painted-on clothes. Their materials are patched once per model (the
+// clones share them, so every person of a model uses one program per part, never a per-instance variant):
+//  skin: light wraps past the terminator, red first (light scattered under the skin comes back reddest), a lower
+//    specular (skin F0 is about .028, not the .04 of the standard model), pores and blotches at close range;
+//  eyes: the eyeball sits at the same spot of every Rocketbox head UV layout, so it gets a wet, near-mirror cornea;
+//  cloth: a woven micro-normal and a soft rim of loose fibres at grazing angles, matte;
+//  kit (helmets, vests, pouches): matte paint, worn light at scuffs, grime in the recesses;
+//  everyone: sand dust that builds up from the boots and settles on upward faces, more on fighters and the team.
+// The detail textures are tiny generated tiles; quality 0 skips their fetches (uChQ), and G.charLook.uChOn = 0 turns
+// the whole look off for before/after captures.
+const CHU = { uChOn: { value: 1 }, uChQ: { value: 2 }, tChW: { value: null }, tChP: { value: null } };
+G.charLook = CHU;
+function tileNoise(N, P, rnd) { const g = Array.from({ length: P * P }, rnd), s = t => t * t * (3 - 2 * t), at = (i, j) => g[((j % P) + P) % P * P + ((i % P) + P) % P];
+  return (x, y) => { x = x / N * P; y = y / N * P; const i = Math.floor(x), j = Math.floor(y), fx = s(x - i), fy = s(y - j); return lerp(lerp(at(i, j), at(i + 1, j), fx), lerp(at(i, j + 1), at(i + 1, j + 1), fx), fy); }; }
+// RG: tangent-space normal from a height field (wrapped, so it tiles), B: an extra noise channel
+function detailTex(N, height, extra, k) {
+  const h = new Float32Array(N * N); for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) h[y * N + x] = height(x, y);
+  const d = new Uint8Array(N * N * 4), H = (x, y) => h[((y + N) % N) * N + (x + N) % N];
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { const i = (y * N + x) * 4, dx = (H(x + 1, y) - H(x - 1, y)) * k, dy = (H(x, y + 1) - H(x, y - 1)) * k, l = Math.hypot(dx, dy, 1);
+    d[i] = (-dx / l * .5 + .5) * 255; d[i + 1] = (-dy / l * .5 + .5) * 255; d[i + 2] = clamp(extra(x, y), 0, 1) * 255; d[i + 3] = 255; }
+  const t = new THREE.DataTexture(d, N, N); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter; t.anisotropy = 4; t.needsUpdate = true; return t;
+}
+function charTextures() {
+  if (CHU.tChW.value) return; const r = rng(5150), N = 128;
+  const fb = [4, 8, 16, 32].map(p => tileNoise(N, p, r)), fbm = (x, y) => fb[0](x, y) * .5 + fb[1](x, y) * .27 + fb[2](x, y) * .15 + fb[3](x, y) * .08;
+  const fib = tileNoise(N, 64, r);
+  // plain weave, 16 threads a tile: each thread is a rounded ridge that dips where it passes under its neighbour
+  CHU.tChW.value = detailTex(N, (x, y) => { const tx = x / 8, ty = y / 8, i = Math.floor(tx), j = Math.floor(ty), fx = tx - i, fy = ty - j, top = (i + j) & 1 ? 1 : -1;
+    const warp = Math.sin(Math.PI * fx) + top * Math.sin(Math.PI * fy) * .45, weft = Math.sin(Math.PI * fy) - top * Math.sin(Math.PI * fx) * .45;
+    return Math.max(warp, weft) + (fib(x, y) - .5) * .35; }, fbm, 1.1);
+  // skin: scattered pores (small pits) over fine creases
+  const pits = Array.from({ length: 300 }, () => [r() * N, r() * N, .7 + r() * .9]), cr = tileNoise(N, 32, r), fine = tileNoise(N, 64, r);
+  CHU.tChP.value = detailTex(N, (x, y) => { let h = cr(x, y) * .5 + fine(x, y) * .25; for (const [px, py, rad] of pits) { let dx = Math.abs(x - px), dy = Math.abs(y - py); dx = Math.min(dx, N - dx); dy = Math.min(dy, N - dy); const q = (dx * dx + dy * dy) / (rad * rad); if (q < 9) h -= Math.exp(-q) * .9; } return h; }, fbm, .9);
+}
+const ROLE = { head: 1, body: 2, kit: 3, hair: 4, cloth: 5 };
+function roleOf(name) { const n = (name || '').toLowerCase(); return n.includes('head') ? 'head' : n.includes('body') ? 'body' : n.includes('keffiyeh') ? 'cloth' : n.includes('helmet') || n.includes('equipment') ? 'kit' : n.includes('opacity') ? 'hair' : null; }
+const chChunk = (k, a, b) => { const s = THREE.ShaderChunk[k]; if (!s.includes(a)) console.warn('charLook: chunk changed', k); return s.replace(a, b); };
+const LOOK_FRAG_MAP = `
+vec2 chUv = (vMapUv - uChXf.xy) / uChXf.zw, chT = chUv * uChTile; vec4 chN = texture2D(tChW, chT * .11); float chSk = 0., chEye = 0.;
+#if CH_ROLE == 1
+  chEye = 1. - smoothstep(.052, .066, distance(chUv, vec2(.262, .937))); chSk = 1. - chEye;
+#elif CH_ROLE == 2
+  { vec3 c = diffuseColor.rgb; float r = max(c.r, 1e-3), gr = c.g / r, sat = (c.r - c.b) / r;
+    chSk = step(c.b, c.g) * smoothstep(.2, .32, sat) * smoothstep(.26, .36, gr) * (1. - smoothstep(.62, .72, gr)) * smoothstep(.012, .03, c.r); }
+#endif
+chSk *= uChOn; chEye *= uChOn;
+diffuseColor.rgb *= mix(vec3(1.), vec3(1.04, .975, .955) * (.94 + .12 * chN.b), chSk);
+#if CH_ROLE == 3
+  { float s = texture2D(tChW, chT * .37).b, sc = smoothstep(.66, .74, s) * uChOn, gm = (1. - smoothstep(.24, .4, s)) * uChOn;
+    diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 1.45 + .025, sc * .5) * (1. - gm * .28); }
+#elif CH_ROLE == 4
+  diffuseColor.rgb *= mix(1., .74 + .52 * texture2D(tChP, chUv * 7.).b, uChOn);
+#endif
+chSkinG = chSk; chEyeG = chEye;
+#if CH_ROLE == 2 || CH_ROLE == 5
+  chFuzzG = (1. - chSk) * uChOn;
+#endif
+`;
+const LOOK_FRAG_ROUGH = `
+#if CH_ROLE == 3
+  roughnessFactor = mix(roughnessFactor, .72 + .12 * chN.b, uChOn);
+#elif CH_ROLE == 4
+  roughnessFactor = mix(roughnessFactor, .55, uChOn);
+#else
+  roughnessFactor = mix(roughnessFactor, mix(.92, .54 + .1 * chN.b, chSkinG), uChOn); roughnessFactor = mix(roughnessFactor, .06, chEyeG);
+#endif
+`;
+const LOOK_FRAG_DUST = `
+#if CH_ROLE != 1 && CH_ROLE != 4
+{ vec3 chNw = inverseTransformDirection(normal, viewMatrix); float low = 1. - smoothstep(.03, .55, vChH), up = smoothstep(.45, .95, chNw.y);
+  float d = uDirt * uChOn * clamp(low * .85 + up * .3, 0., 1.) * (.45 + .55 * smoothstep(.3, .7, chN.b)) * (1. - chSkinG * .6);
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.45, .38, .28) * (.9 + .2 * chN.b), d * .5); roughnessFactor = mix(roughnessFactor, .95, d); chFuzzG *= 1. + d; }
+#endif
+`;
+function lookPatch(role, m, dirt) {
+  const R0 = ROLE[role];
+  return sh => {
+    const mp = m.map; Object.assign(sh.uniforms, CHU); sh.uniforms.uDirt = { value: dirt }; sh.uniforms.uChTile = { value: 40 };
+    sh.uniforms.uChXf = { value: new THREE.Vector4(mp ? mp.offset.x : 0, mp ? mp.offset.y : 0, mp ? mp.repeat.x : 1, mp ? mp.repeat.y : 1) };
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vChH;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvChH = position.z;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#define CH_ROLE ${R0}\n#include <common>\nuniform sampler2D tChW, tChP; uniform float uChOn, uChQ, uDirt, uChTile; uniform vec4 uChXf; varying float vChH;\nfloat chSkinG = 0., chEyeG = 0., chFuzzG = 0.;`)
+      .replace('#include <map_fragment>', '#include <map_fragment>\n' + LOOK_FRAG_MAP)
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n' + LOOK_FRAG_ROUGH)
+      .replace('#include <normal_fragment_maps>', chChunk('normal_fragment_maps', 'mapN.xy *= normalScale;', `mapN.xy *= normalScale;
+  if (uChQ > .5) { vec2 dw = texture2D(tChW, chT).rg * 2. - 1., dp = texture2D(tChP, chT * 1.6).rg * 2. - 1.; mapN.xy += mix(dw * ${role === 'kit' ? '.3' : '.55'}, dp * .4, chSkinG) * (1. - chEyeG) * uChOn; }`) + LOOK_FRAG_DUST)
+      .replace('#include <lights_physical_fragment>', '#include <lights_physical_fragment>\nmaterial.specularColor *= 1. - .3 * chSkinG;')
+      .replace('#include <lights_physical_pars_fragment>', chChunk('lights_physical_pars_fragment', 'reflectedLight.directDiffuse += irradiance * BRDF_Lambert( material.diffuseColor );',
+        `{ float chW = dot(geometryNormal, directLight.direction); vec3 chK = vec3(.48, .2, .12) * chSkinG; vec3 chI = clamp((vec3(chW) + chK) / (1. + chK), 0., 1.) * directLight.color;
+    reflectedLight.directDiffuse += chI * BRDF_Lambert(material.diffuseColor) * (1. + chFuzzG * .6 * pow(1. - saturate(dot(geometryNormal, geometryViewDir)), 4.)); }`));
+  };
+}
+const DIRT = m => m.startsWith('team') ? .55 : m === 'fighter' ? .7 : m.startsWith('guard') ? .6 : m.startsWith('host') ? .2 : .25;
+const looked = new Set(), lookOf = new WeakMap();
+// once per model, on the shared source materials (before any clone is made, so the clones and the crowd share them)
+function charLook(model) {
+  if (looked.has(model) || !A.chars[model]) return; looked.add(model); charTextures(); const dirt = DIRT(model);
+  A.chars[model].scene.traverse(o => { if (!o.isMesh) return; for (const m of [].concat(o.material)) { const role = roleOf(m.name); if (!role || lookOf.has(m) || !m.isMeshStandardMaterial || !m.map) continue;
+    const f = lookPatch(role, m, dirt); lookOf.set(m, { role, dirt }); m.onBeforeCompile = f; m.customProgramCacheKey = () => 'chLook' + role; m.needsUpdate = true; } });
+}
+const GAIT = new Set(['walk', 'walkFast', 'run', 'sprint', 'limp', 'runHurt']);
 let nextId = 1;
 export class Actor {
   constructor(model, kind, pos, yaw = 0, opts = {}) {
     this.id = nextId++; this.kind = kind; this.model = model; this.opts = opts;
     this.sex = model.startsWith('hostF') || model.startsWith('civF') ? 'f' : 'm';
+    charLook(model);
     this.root = SkeletonUtils.clone(A.chars[model].scene);
     if (kind === 'civ' && model.startsWith('civM')) localDress(this.root, 7919 * nextId + 13);
     this.root.position.copy(pos); this.yaw = yaw; this.root.rotation.y = yaw;
@@ -121,9 +225,15 @@ export class Actor {
     const c = this.clip(k); if (!c) return;
     let a = this.actions[k]; if (!a) { a = this.actions[k] = this.mixer.clipAction(c); }
     a.reset(); a.timeScale = speed; a.enabled = true; a.setEffectiveWeight(1); a.play();
+    // gait to gait (walk -> run): start the new cycle at the same phase, so the cross-fade doesn't blend a left step into a right one
+    if (this.cur && GAIT.has(k) && GAIT.has(this.curKey)) { const oc = this.cur.getClip(); a.time = (this.cur.time / oc.duration % 1) * c.duration; }
     if (this.cur && fade > 0) this.cur.crossFadeTo(a, fade, false); else if (this.cur) this.cur.stop();
     this.cur = a; this.curKey = k;
   }
+  // feet plant: play each gait at the rate its clip was authored to cover ground (clip.userData.speed). The old fixed
+  // divisors were the male clips' speeds, so women sprinting (their run clip covers 2.8 m/s, not 5.2) and anyone limping
+  // (.7 m/s) skated over the ground.
+  loco(k, s, fade) { const c = this.clip(k), v = c && c.userData && c.userData.speed > .2 ? c.userData.speed : 1.4; this.play(k, fade, clamp(s / v, .55, 2.1)); }
   get pos() { return this.root.position; }
   eye(out = new THREE.Vector3()) { return this.bones.Head ? worldPos(this.bones.Head, out).add(_v.set(0, .06, 0)) : out.copy(this.pos).add(_v.set(0, 1.6, 0)); }
   chest(out = new THREE.Vector3()) { return this.bones.Spine2 ? worldPos(this.bones.Spine2, out) : out.copy(this.pos).add(_v.set(0, 1.3, 0)); }
@@ -250,9 +360,9 @@ export class Actor {
     if (!this.alive) return;
     const s = this.speed;
     if (this.forceAnim) { this.play(this.forceAnim, .3); return; }
-    if (s > 3.2) this.play(this.hurt ? 'runHurt' : 'sprint', .25, s / 5.2);
-    else if (s > 1.9) this.play(this.hurt ? 'runHurt' : 'run', .25, s / 2.9);
-    else if (s > .25) this.play(this.hurt ? 'limp' : (s > 1.25 ? 'walkFast' : 'walk'), .3, Math.max(.6, s / (s > 1.25 ? 1.5 : 1.0)));
+    if (s > 3.2) this.loco(this.hurt ? 'runHurt' : 'sprint', s, .25);
+    else if (s > 1.9) this.loco(this.hurt ? 'runHurt' : 'run', s, .25);
+    else if (s > .25) this.loco(this.hurt ? 'limp' : (s > 1.25 ? 'walkFast' : 'walk'), s, .3);
     else this.play(this.idleAnim || (this.rifle ? 'idle' : 'idle'), .4);
   }
   // ---------- rifle hold (IK) ----------
@@ -289,6 +399,7 @@ export class Actor {
   // ---------- per-frame ----------
   update(dt) {
     if (this.removed) return;
+    CHU.uChQ.value = G.quality ?? 2;
     if (this.pool && this.down && !this.treated && this.pool.scale.x < 1.35) this.pool.scale.setScalar(this.pool.scale.x + dt * .035);
     if (this.alive && this.down && !this.treated) { this.health -= dt * (this.bleedRate ?? .75); if (this.health <= 0) { if (this.noDie) this.health = 1; else this.die(null); } }
     else if (this.friendly && this.alive && this.health < (this.treated ? 75 : 100) && G.time - (this.lastHit || 0) > 8) this.health = Math.min(this.treated ? 75 : 100, this.health + dt * 3);

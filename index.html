@@ -24,6 +24,9 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--amber);outline-
 /* loading + menu */
 #loading{align-items:flex-end;justify-content:flex-start;background:radial-gradient(120% 90% at 80% 20%,#23241d 0,#0c0d0a 70%)}
 #loading .box{max-width:520px;width:100%;display:grid;gap:14px}
+#loading .bar{position:relative}#loading .bar.busy::after{content:"";position:absolute;inset:0;width:30%;background:linear-gradient(90deg,transparent,rgba(255,236,190,.55),transparent);animation:loadsweep 1.1s linear infinite}
+@keyframes loadsweep{from{transform:translateX(120%)}to{transform:translateX(-340%)}}
+#loading .net{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:var(--dim)}
 .title{font-weight:900;font-size:min(11vw,15vh,112px);line-height:.9;margin:0;letter-spacing:-.01em;text-wrap:balance}
 .bar{height:3px;background:rgba(232,220,196,.12);overflow:hidden}.bar i{display:block;height:100%;background:var(--amber);transform-origin:right;transform:scaleX(0);transition:transform .2s}
 .small{font-size:13px;color:var(--dim);line-height:1.6;max-width:60ch}
@@ -215,6 +218,118 @@ body.touch #squad .r{grid-template-columns:1fr 38px;gap:5px}
 
 @media (prefers-reduced-motion:reduce){#obj.pulse,#brieflines li{animation:none}}
 </style>
+<style>
+/* ---------- UI polish: one visual language for menus, cards and HUD (shared by both missions; #loading is styled above and left alone) ---------- */
+:root{--hair:rgba(232,220,196,.24);--ink2:#d6cab2;--rad:4px;--card:rgba(17,18,14,.96);--ease:cubic-bezier(.2,.7,.2,1);--amberA:rgba(242,184,75,.16)}
+a:focus-visible,.tb:focus-visible,[role="tab"]:focus-visible,select:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+/* buttons: one height, one radius; ghost buttons keep a dark plate so they read over the live 3D scene */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 28px;border-radius:var(--rad);font-size:16px;line-height:1.15;text-decoration:none;box-shadow:inset 0 1px 0 rgba(255,255,255,.28),0 8px 22px rgba(0,0,0,.32);transition:filter .15s,transform .1s,border-color .15s,color .15s,opacity .3s}
+.btn:hover{filter:brightness(1.08)}.btn:active{transform:translateY(1px)}
+.btn.ghost{background:rgba(12,13,10,.6);border-color:var(--hair);box-shadow:none}
+.btn.ghost:hover{border-color:rgba(242,184,75,.75);color:#fff;filter:none}
+.seg{border-color:var(--hair);border-radius:var(--rad);background:rgba(12,13,10,.5)}
+.seg button{min-height:36px;padding:0 15px;transition:background-color .15s,color .15s}
+.seg button:hover{color:var(--ink)}
+.seg button[aria-pressed="true"]{background:var(--amber);color:#15130e}
+.settings label{display:inline-flex;align-items:center;gap:7px;min-height:32px;cursor:pointer;color:var(--ink2)}
+.settings input[type=checkbox]{width:18px;height:18px;margin:0;accent-color:var(--amber)}
+.settings input[type=range]{height:28px;margin:0;cursor:pointer}
+.settings .seg{justify-self:start}
+/* mission switcher: two tabs, the current one underlined in amber */
+.missions{gap:6px}
+.missions a,.missions span{display:inline-flex;align-items:center;min-height:36px;padding:0 14px!important;border:1px solid var(--line);border-radius:var(--rad)!important;background:rgba(12,13,10,.55);color:var(--dim);text-decoration:none;transition:color .15s,border-color .15s}
+.missions a:hover{color:var(--ink);border-color:var(--hair)}
+.missions .cur{background:var(--amberA);color:var(--ink);border-color:rgba(242,184,75,.55);box-shadow:inset 0 -2px 0 var(--amber);font-weight:700}
+/* main menu: an amber rule ties the column together; settings sit on their own plate */
+#menu .col{gap:min(16px,2.3vh);padding-right:20px;border-right:2px solid rgba(242,184,75,.8)}
+#menu .eyebrow,#briefing .eyebrow,.ov .eyebrow{letter-spacing:.18em}
+#menu .title{font-size:min(10.5vw,15vh,108px);text-shadow:0 4px 40px rgba(0,0,0,.45)}
+#menu .lede{color:var(--ink);text-shadow:0 1px 8px rgba(0,0,0,.6)}
+#menu .settings{background:rgba(12,13,10,.62);border:1px solid var(--line);border-radius:var(--rad);padding:12px 16px;gap:8px 16px;color:var(--dim)}
+#menu .keys{opacity:.85}
+#menu p.small{color:#8d8574;font-size:12px}
+/* briefing: the map reads as a screen in an ops room, corner brackets and all */
+#briefing{background:radial-gradient(110% 100% at 100% 0,#1b1c16 0,#0a0b08 70%)}
+#briefing .mapwrap{border-color:var(--hair);background:#1c1d18;box-shadow:0 20px 50px rgba(0,0,0,.45)}
+#briefing .mapwrap::after{content:"";position:absolute;inset:8px;pointer-events:none;--c:rgba(242,184,75,.85);background:linear-gradient(var(--c),var(--c)) 0 0/16px 2px,linear-gradient(var(--c),var(--c)) 0 0/2px 16px,linear-gradient(var(--c),var(--c)) 100% 0/16px 2px,linear-gradient(var(--c),var(--c)) 100% 0/2px 16px,linear-gradient(var(--c),var(--c)) 0 100%/16px 2px,linear-gradient(var(--c),var(--c)) 0 100%/2px 16px,linear-gradient(var(--c),var(--c)) 100% 100%/16px 2px,linear-gradient(var(--c),var(--c)) 100% 100%/2px 16px;background-repeat:no-repeat}
+#briefing .side{gap:12px}
+#briefing .side h2{line-height:1.1}
+#brieflines li{color:var(--ink2);padding:2px 12px 2px 0}
+#brieflines li:last-child{color:var(--ink)}
+#briefing .howto{background:rgba(232,220,196,.035);border:1px solid var(--line);border-radius:var(--rad);padding:10px 14px}
+#briefing .howto>b{font-size:12px;letter-spacing:.08em;color:var(--amber)}
+#briefing .side>.row{margin-top:auto}
+#bgo{transition:opacity .4s,filter .15s}
+/* HUD (mission 1): objective on a soft plate, segmented health, subtitle strip */
+#obj:empty{display:none}
+#stagebox{top:calc(104px + env(safe-area-inset-top,0px))}
+#obj{background:linear-gradient(270deg,rgba(8,8,6,.55),rgba(8,8,6,0));padding:5px 14px 6px 34px}
+#obj::before{content:"יעד";font:600 10px "IBM Plex Mono",monospace;letter-spacing:.2em;color:var(--amber)}
+#ammobox{gap:2px}
+#ammo{font-size:44px;letter-spacing:-.01em}
+#res{color:var(--dim)}#res::before{content:"/ ";opacity:.55}
+#ammobox::after{content:"";display:block;width:132px;height:2px;margin-top:4px;background:linear-gradient(90deg,var(--amber),rgba(242,184,75,0))}
+#hp{height:6px;background:rgba(232,220,196,.14);box-shadow:0 0 0 1px rgba(0,0,0,.35)}
+#hp::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent 0 calc(10% - 2px),rgba(8,8,6,.75) calc(10% - 2px) 10%);pointer-events:none}
+#sub{border-radius:0;padding:7px 46px 8px;background:linear-gradient(90deg,rgba(8,8,6,0),rgba(8,8,6,.74) 14%,rgba(8,8,6,.74) 86%,rgba(8,8,6,0))}
+#subtxt{text-shadow:0 1px 2px rgba(0,0,0,.7)}
+#sub.radio #subwho::before{content:"";font-size:inherit;display:inline-block;width:6px;height:6px;margin-left:6px;vertical-align:2px;border-radius:50%;background:currentColor;box-shadow:0 0 6px currentColor}
+#toast{border-radius:var(--rad);border-right:3px solid var(--amber);padding:9px 18px;box-shadow:0 8px 24px rgba(0,0,0,.35)}
+#toast.warn{border-right-color:var(--red)}
+#hint{background:rgba(10,11,8,.84);border-right:3px solid var(--amber);border-radius:var(--rad)}
+#prompttxt{border-radius:var(--rad);border:1px solid var(--line)}
+#timerbox{border-radius:var(--rad);border-top:2px solid var(--amber)}
+/* overlays: a dimmed scene, cards with an amber top rule, a short rise-in */
+.ov{background:radial-gradient(120% 100% at 50% 40%,rgba(10,10,8,.66),rgba(5,5,4,.9));animation:ovin .22s ease-out}
+.card{background:var(--card);border:1px solid var(--hair);border-top:2px solid var(--amber);border-radius:var(--rad);box-shadow:0 30px 80px rgba(0,0,0,.55);padding:26px 30px;animation:cardin .3s var(--ease)}
+@keyframes ovin{from{opacity:0}}@keyframes cardin{from{opacity:0;transform:translateY(10px)}}
+.card h2{line-height:1.15}
+#pause .card{max-width:440px}
+#pause .card>.row,#fail .card>.row{flex-direction:column;align-items:stretch}
+#pause .settings{border-top-color:var(--line)}
+#pause #diag{font-size:11.5px;font-family:"IBM Plex Mono",monospace;color:#8d8574}
+#fail .card{border-top-color:var(--red)}#fail .eyebrow{color:#ff8a70}
+#hist .card{max-width:660px}
+#end .card{background:none;border:0;box-shadow:none;gap:16px}
+.endh{font-size:clamp(28px,4.4vw,44px)!important;line-height:1.05!important}
+.stats{gap:8px;background:none;border:0}
+.stats div{background:rgba(232,220,196,.035);border:1px solid var(--line);border-top:2px solid rgba(242,184,75,.7);border-radius:var(--rad);padding:12px 14px}
+.stats b{font-size:28px;font-weight:600;line-height:1.1}
+.stats span{display:block;margin-top:3px}
+.credits{opacity:.8}
+/* phone (landscape) */
+body.touch .btn{min-height:46px}
+body.touch .seg button{min-height:44px}
+body.touch .settings label{min-height:44px}
+body.touch .settings input[type=range]{height:44px}
+body.touch .missions a,body.touch .missions span{min-height:44px}
+body.touch #bpause{display:flex;align-items:center;justify-content:center;width:44px;height:44px;padding:0;border-radius:var(--rad);top:calc(8px + env(safe-area-inset-top,0px));left:calc(10px + env(safe-area-inset-left,0px));background:rgba(12,13,10,.55);border-color:var(--hair)}
+body.touch #clockbox{left:calc(62px + env(safe-area-inset-left,0px));top:calc(10px + env(safe-area-inset-top,0px))}
+body.touch #hp{left:calc(62px + env(safe-area-inset-left,0px));top:calc(32px + env(safe-area-inset-top,0px));width:104px;height:5px}
+body.touch #squad{top:calc(62px + env(safe-area-inset-top,0px))}
+body.touch #obj{padding:3px 10px 4px 22px}body.touch #obj::before{font-size:8.5px}
+body.touch #ammo{font-size:26px}body.touch #ammobox::after{width:70px;margin-top:2px}
+body.touch #sub{padding:5px 26px 6px}
+body.touch .tb{box-shadow:0 2px 10px rgba(0,0,0,.25)}
+body.touch #bFire2{top:44%}
+@media (max-height:420px){
+  body.touch #menu{padding:12px 20px calc(12px + env(safe-area-inset-bottom,0px))}
+  body.touch #menu .col{max-width:none;width:100%;grid-template-columns:minmax(0,1fr) minmax(0,.92fr);column-gap:22px;align-items:end;padding-right:16px}
+  body.touch #menu .col>*{grid-column:1}
+  body.touch #menu .col>.settings{grid-column:2;grid-row:1/span 6;align-self:end;grid-template-columns:auto 1fr}
+  body.touch #menu .title{font-size:48px}
+  body.touch #menu .lede{font-size:13.5px;line-height:1.45}
+  body.touch #menu p.small{font-size:11px;line-height:1.4}
+  body.touch #briefing .howto{padding:7px 10px}
+  body.touch #briefing .howto{flex:0 1 auto;min-height:0;overflow:auto}
+  body.touch #brieflines{flex:1 1 0;min-height:52px}
+  .card{padding:16px 20px;max-height:92vh}
+  #pause .card>.row,#fail .card>.row{flex-direction:row}#pause .card>.row .btn{flex:1;padding:0 12px;white-space:nowrap}
+  #end{align-items:flex-start;overflow:auto}#end .card{max-height:none;padding:8px 12px;gap:10px}
+  .stats div{padding:7px 10px}.stats b{font-size:21px}
+}
+@media (prefers-reduced-motion:reduce){.ov,.card,.ov .card,#brieflines li,.wp.use .dia,.tag.down{animation:none!important}.btn,.seg button,#hint,#toast,#sub,#bgo{transition:none!important}}
+</style>
 </head><body>
 
 <canvas id="c"></canvas>
@@ -225,6 +340,13 @@ body.touch #squad .r{grid-template-columns:1fr 38px;gap:5px}
     <h1 class="title">מבצע ארנון</h1>
     <div class="bar"><i id="loadbar"></i></div>
     <div class="row" style="justify-content:space-between"><span class="small" id="loadtxt">טוען…</span><span class="small mono" id="loadpct">0%</span></div>
+    <div class="net"><span>טעינה ראשונה: הורדה של כל הדמויות, הרכבים והקולות. בפעם הבאה הדפדפן כבר שומר אותם.</span><span class="mono" id="loadmb" dir="ltr"></span></div>
+    <script>
+      // after the download, building the world and baking the light take a while with no bytes to count: walk the bar
+      // through those stages and sweep a highlight over it (it animates on the compositor even while the bake holds the page)
+      (() => { const st = [['בונה', .84], ['תאורה', .93]], t = document.getElementById('loadtxt'), bar = document.getElementById('loadbar'), pct = document.getElementById('loadpct');
+        new MutationObserver(() => { const s = st.find(([k]) => t.textContent.includes(k)); if (!s) return; bar.parentNode.classList.add('busy'); bar.style.transform = 'scaleX(' + s[1] + ')'; pct.textContent = Math.round(s[1] * 100) + '%'; }).observe(t, { childList: true, characterData: true, subtree: true }); })();
+    </script>
     <p class="small">משחק יריות בגוף ראשון המבוסס על מבצע החילוץ בנוסייראת. שמות החטופים והלוחמים בדויים, והפרטים המבצעיים מפושטים.</p>
   </div>
 </div>
@@ -275,30 +397,30 @@ body.touch #squad .r{grid-template-columns:1fr 38px;gap:5px}
   <div id="hitm"></div>
   <div id="vign"></div><div id="blood"></div><div id="ammowarn"></div>
   <div id="dmgarcs"></div>
-  <div id="sub"><span id="subwho"></span><span id="subtxt"></span></div>
+  <div id="sub" aria-live="polite"><span id="subwho"></span><span id="subtxt"></span></div>
   <div id="prompt"><span id="prompttxt"></span><div class="pb"><div id="promptbar"></div></div></div>
-  <div id="toast"></div>
-  <button id="bpause">השהיה</button>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <button id="bpause" aria-label="השהיה" title="השהיה"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg></button>
 </div>
 <div id="touch" hidden>
   <div id="lookzone"></div>
   <div id="stick"><div id="knob"></div></div>
-  <div class="tb" id="bFire" aria-label="ירי"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="7"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></svg></div><div class="tb" id="bFire2" aria-label="ירי"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="7"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></svg></div><div class="tb" id="bAds" aria-label="כוונת"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="7" width="18" height="10" rx="3"/><circle cx="12" cy="12" r="2.2" fill="currentColor"/></svg></div><div class="tb" id="bReload" aria-label="טעינה"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></svg></div><div class="tb" id="bCrouch" aria-label="כריעה"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13" cy="5" r="2"/><path d="M12 8l-2 5h5l2 6M10 13l-4 3 1 3"/></svg></div><div class="tb" id="bUse" hidden>פעולה</div>
+  <div class="tb" role="button" id="bFire" aria-label="ירי"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="7"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></svg></div><div class="tb" role="button" id="bFire2" aria-label="ירי"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="7"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></svg></div><div class="tb" role="button" id="bAds" aria-label="כוונת"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="7" width="18" height="10" rx="3"/><circle cx="12" cy="12" r="2.2" fill="currentColor"/></svg></div><div class="tb" role="button" id="bReload" aria-label="טעינה"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></svg></div><div class="tb" role="button" id="bCrouch" aria-label="כריעה"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13" cy="5" r="2"/><path d="M12 8l-2 5h5l2 6M10 13l-4 3 1 3"/></svg></div><div class="tb" role="button" id="bUse" hidden>פעולה</div>
   <div id="stickHome"></div>
 </div>
 <div id="flash"></div><div id="fade"></div>
 
-<div id="pause" class="ov" hidden><div class="card"><h2>השהיה</h2><div class="row"><button class="btn" id="bresume">המשך</button><button class="btn ghost" id="brestart">מנקודת הביקורת</button><button class="btn ghost" id="bquit">לתפריט</button></div>
-  <div class="settings"><span>גרפיקה</span><div class="seg"><button data-q="0">נמוכה</button><button data-q="1">בינונית</button><button data-q="2">גבוהה</button></div></div><p class="small" id="diag"></p></div></div>
-<div id="fail" class="ov" hidden><div class="card"><div class="eyebrow">המשימה נכשלה</div><h2 id="failtxt"></h2><div class="row"><button class="btn" id="bretry">נסה שוב מנקודת הביקורת</button></div></div></div>
-<div id="hist" class="ov" hidden><div class="card">
+<div id="pause" class="ov" role="dialog" aria-modal="true" aria-labelledby="pauseh" hidden><div class="card"><div class="eyebrow">מבצע ארנון · משימה 1</div><h2 id="pauseh">השהיה</h2><div class="row"><button class="btn" id="bresume">המשך</button><button class="btn ghost" id="brestart">מנקודת הביקורת</button><button class="btn ghost" id="bquit">לתפריט</button></div>
+  <div class="settings"><span>גרפיקה</span><div class="seg" role="group" aria-label="איכות"><button data-q="0">נמוכה</button><button data-q="1">בינונית</button><button data-q="2">גבוהה</button></div></div><p class="small" id="diag"></p></div></div>
+<div id="fail" class="ov" role="alertdialog" aria-modal="true" aria-labelledby="failtxt" hidden><div class="card"><div class="eyebrow">המשימה נכשלה</div><h2 id="failtxt"></h2><div class="row"><button class="btn" id="bretry">נסה שוב מנקודת הביקורת</button></div></div></div>
+<div id="hist" class="ov" role="dialog" aria-modal="true" aria-label="רקע היסטורי" hidden><div class="card">
   <div class="eyebrow">רקע היסטורי</div><h2>מבצע ארנון, 8 ביוני 2024</h2>
   <p>בשבת בבוקר, בשעה 11:00, פשטו לוחמי ימ״מ ושב״כ בסיוע צה״ל על שני בניינים במחנה נוסייראת, במרחק של כמאתיים מטר זה מזה. בבניין אחד הוחזקה חטופה אחת, ובשני שלושה חטופים, בדירות של משפחות.</p>
   <p>הפשיטה על שני הבניינים נעשתה בו־זמנית. החילוץ מהבניין הראשון עבר בשקט יחסי. בבניין השני פרץ קרב, ומפקד הצוות, פקד ארנון זמורה, נפצע אנושות. רכב החילוץ נתקע תחת אש, כוחות תגבור הגיעו אליו, והחטופים פונו במסוקים מנקודת נחיתה בחוף. ארבעת החטופים חזרו בחיים.</p>
   <p>המבצע נקרא על שמו של ארנון זמורה, שמת מפצעיו. לפי משרד הבריאות בעזה נהרגו במהלך המבצע 274 פלסטינים; צה״ל העריך שמספר ההרוגים נמוך ממאה. המספרים שנויים במחלוקת.</p>
   <p class="small">המשחק מפשט את האירועים. כל הדיאלוגים, שמות הקוד וסדר הפעולות במשחק הם המחשה ולא תיעוד.</p>
   <div class="row"><button class="btn ghost" id="bhistclose">סגור</button></div></div></div>
-<div id="memorial" class="ov" hidden><div class="mem">
+<div id="memorial" class="ov" role="dialog" aria-label="לזכרו" hidden><div class="mem">
   <div class="memphoto" id="memphoto"><img id="memimg" alt="פקד ארנון זמורה ז״ל" onerror="this.parentNode.classList.add('noimg')"><div class="ph"><span class="flame" style="margin:0 0 6px"></span><b style="color:var(--ink);font-size:16px">ארנון זמורה ז״ל</b></div></div>
   <div class="memtext">
     <div class="eyebrow">לזכרו</div>
@@ -308,15 +430,15 @@ body.touch #squad .r{grid-template-columns:1fr 38px;gap:5px}
     <p class="yhi">יהי זכרו ברוך.</p>
     <div class="row"><button class="btn ghost" id="bmem">המשך</button></div>
   </div></div></div>
-<div id="end" class="ov" hidden><div class="card">
+<div id="end" class="ov" role="dialog" aria-label="סיום המשימה" hidden><div class="card">
   <div class="eyebrow">11:48 · חוף מרכז הרצועה</div>
-  <h2 style="font-size:40px">ארבעה חטופים בידינו.</h2>
+  <h2 class="endh">ארבעה חטופים בידינו.</h2>
   <p>ארבעת החטופים שהוחזקו בנוסייראת חזרו לישראל בחיים.</p>
   <p class="dedic">פקד ארנון זמורה ז״ל, מפקד צוות בימ״מ, נפצע אנושות במבצע ומת מפצעיו. המבצע נקרא על שמו.</p>
   <div class="stats"><div><b id="st-time">—</b><span>זמן משימה</span></div><div><b id="st-acc">—</b><span>דיוק</span></div><div><b id="st-kills">—</b><span>חמושים שנוטרלו</span></div><div><b id="st-civ">—</b><span>פגיעה בבלתי־מעורבים</span></div></div>
   <p class="small">לפי משרד הבריאות בעזה נהרגו במבצע 274 פלסטינים; צה״ל העריך פחות ממאה. שמות החטופים והלוחמים במשחק בדויים.</p>
-  <ul class="credits small"><li>דמויות: <bdi>Microsoft Rocketbox (MIT)</bdi></li><li>רובה M4A1: <bdi>nisu, OpenGameArt (CC0)</bdi></li><li>זרועות: <bdi>kursat_sokmen (CC BY 4.0)</bdi></li><li>מסוק UH-60 וצלילי רוטור: <bdi>FlightGear (GPL-2.0)</bdi></li><li>רכבים ואביזרים: <bdi>Gazebo models (CC BY 3.0)</bdi></li><li>טקסטורות: <bdi>Babylon.js Assets (CC BY 4.0), Poly Haven (CC0)</bdi></li><li>הקלטות ירי אמיתיות: <bdi>Free Firearm Sound Library (CC0)</bdi></li><li>צלילים: <bdi>Red Eclipse (CC BY-SA), 0 A.D. / Wildfire Games (CC BY-SA), ESC-50 (CC BY), OpenClonk (CC BY), OpenRCT2 (CC BY), Warfork (CC0), Kenney (CC0), VoxeLibre</bdi></li><li>טקסטורות בטון ובלוקים: <bdi>Nobiax / Yughues (CC0), 0 A.D. (CC BY-SA)</bdi></li><li>שמיים וטקסטורות צילום: <bdi>Poly Haven, ambientCG (CC0)</bdi></li><li>דיבוב (סינתזה נוירונית מקומית): <bdi>BlueTTS, Max Melichov (MIT)</bdi></li><li>ריהוט הדירה: <bdi>AWS RoboMaker Residential models (MIT-0)</bdi></li></ul>
-  <div class="row"><button class="btn" id="bagain">שחק שוב</button><a class="btn ghost" href="fence.html" style="text-decoration:none">למשימה 2: הגדר</a></div></div></div>
+  <div class="row"><button class="btn" id="bagain">שחק שוב</button><a class="btn ghost" href="fence.html" style="text-decoration:none">למשימה 2: הגדר</a></div>
+  <ul class="credits small"><li>דמויות: <bdi>Microsoft Rocketbox (MIT)</bdi></li><li>רובה M4A1: <bdi>nisu, OpenGameArt (CC0)</bdi></li><li>זרועות: <bdi>kursat_sokmen (CC BY 4.0)</bdi></li><li>מסוק UH-60 וצלילי רוטור: <bdi>FlightGear (GPL-2.0)</bdi></li><li>רכבים ואביזרים: <bdi>Gazebo models (CC BY 3.0)</bdi></li><li>טקסטורות: <bdi>Babylon.js Assets (CC BY 4.0), Poly Haven (CC0)</bdi></li><li>הקלטות ירי אמיתיות: <bdi>Free Firearm Sound Library (CC0)</bdi></li><li>צלילים: <bdi>Red Eclipse (CC BY-SA), 0 A.D. / Wildfire Games (CC BY-SA), ESC-50 (CC BY), OpenClonk (CC BY), OpenRCT2 (CC BY), Warfork (CC0), Kenney (CC0), VoxeLibre</bdi></li><li>טקסטורות בטון ובלוקים: <bdi>Nobiax / Yughues (CC0), 0 A.D. (CC BY-SA)</bdi></li><li>שמיים וטקסטורות צילום: <bdi>Poly Haven, ambientCG (CC0)</bdi></li><li>דיבוב (סינתזה נוירונית מקומית): <bdi>BlueTTS, Max Melichov (MIT)</bdi></li><li>ריהוט הדירה: <bdi>AWS RoboMaker Residential models (MIT-0)</bdi></li></ul></div></div>
 <div id="err" hidden></div>
 <div id="rotate"><svg viewBox="0 0 24 24" width="56" height="56" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M3 9a9 9 0 0 1 4-5M21 15a9 9 0 0 1-4 5"/></svg><b>סובב את הטלפון לרוחב</b><span>המשחק בנוי למסך רוחבי</span></div>
 

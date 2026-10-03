@@ -48,11 +48,27 @@ function windowUnit(axis, c, a0, a1, y0, y1, inward, { grill = true, cover = nul
   if (axis === 'x') pane.translate(a0 + gw / 2, (y0 + y1) / 2, c); else { pane.rotateY(Math.PI / 2); pane.translate(c, (y0 + y1) / 2, a0 + gw / 2); }
   addMesh(glassMat, pane, false);
   if (grill) { const n = Math.round((a1 - a0) / .14); for (let i = 1; i < n; i++) { const a = a0 + i * (a1 - a0) / n; if (axis === 'x') box(MAT.metalDark, a - .008, a + .008, y0, y1, c + inward * .1 - .008, c + inward * .1 + .008, { collide: false, cast: true }); else box(MAT.metalDark, c + inward * .1 - .008, c + inward * .1 + .008, y0, y1, a - .008, a + .008, { collide: false }); } }
-  if (cover) { const cg = new THREE.PlaneGeometry(a1 - a0 + .3, y1 - y0 + .3, 6, 6); const p = cg.attributes.position; for (let i = 0; i < p.count; i++) p.setZ(i, Math.sin(p.getX(i) * 6) * .03);
+  // a blanket nailed up at its top corners: the top edge sags between the nails and the folds fan out from them
+  if (cover) { const cw = a1 - a0 + .3, chh = y1 - y0 + .3, cg = new THREE.PlaneGeometry(cw, chh, 12, 8); const p = cg.attributes.position; for (let i = 0; i < p.count; i++) { const u = p.getX(i) / cw + .5, v = p.getY(i) / chh + .5, sg = Math.sin(u * Math.PI);
+      p.setY(i, p.getY(i) - sg * v * v * .07); p.setZ(i, (Math.sin(p.getX(i) * 6 + v * 1.5) * .03 + Math.sin(p.getX(i) * 15.3 + 1.7) * .012 * (1 - v) + sg * v * .025) * (.5 + .5 * sg)); }
+    cg.computeVertexNormals();
     if (axis === 'x') cg.translate((a0 + a1) / 2, (y0 + y1) / 2, c + inward * .2); else { cg.rotateY(Math.PI / 2); cg.translate(c + inward * .2, (y0 + y1) / 2, (a0 + a1) / 2); }
     addMesh(cover, cg, true); }
 }
-let glassMat;
+let glassMat, aptDoorM, aptDoorW, fanM, curtM;
+// Cheap printed polyester of a Gaza salon: a sand ground with a woven damask stripe, sun-faded toward the lit edge.
+function curtainTex() { return canvasTex(256, 512, (g, w, h) => { const r = rng(611); g.fillStyle = '#9a8a6c'; g.fillRect(0, 0, w, h);
+  for (let x = 0; x < w; x += 64) { g.fillStyle = 'rgba(92,70,46,.32)'; g.fillRect(x + 22, 0, 20, h); g.fillStyle = 'rgba(240,226,196,.14)'; g.fillRect(x + 4, 0, 6, h);
+    for (let y = 16; y < h; y += 48) { g.fillStyle = 'rgba(96,66,40,.4)'; g.beginPath(); g.ellipse(x + 32, y, 7, 15, 0, 0, 7); g.fill(); g.fillStyle = 'rgba(232,214,176,.3)'; g.beginPath(); g.ellipse(x + 32, y, 3, 8, 0, 0, 7); g.fill(); } }
+  for (let i = 0; i < 2500; i++) { g.fillStyle = `rgba(${r() < .5 ? '60,48,34' : '236,224,200'},${r() * .08})`; g.fillRect(r() * w, r() * h, 1 + r() * 2, 4 + r() * 10); } }); }
+// One curtain panel pushed aside: gathered on its rings at the top, falling in uneven folds that open toward the hem.
+// Built along +x from the hanging edge, folds toward +z; ry turns it onto its wall.
+function curtain(x, z, ry, w, y0, y1, seed) { const q = rng(seed), nx = 26, g = new THREE.PlaneGeometry(w, y1 - y0, nx, 8), p = g.attributes.position;
+  const fr = [], ph = []; for (let k = 0; k < 3; k++) { fr.push(14 + q() * 16); ph.push(q() * 6); }
+  for (let i = 0; i < p.count; i++) { const u = p.getX(i) / w + .5, v = p.getY(i) / (y1 - y0) + .5, gx = u * w;
+    const d = Math.sin(gx * fr[0] + ph[0]) * .045 + Math.sin(gx * fr[1] + ph[1]) * .022 + Math.sin(gx * fr[2] + ph[2] + v * 2) * .012;
+    p.setXYZ(i, gx * (.82 + .18 * (1 - v)), p.getY(i) + (y0 + y1) / 2 - (1 - v) * .02 * Math.sin(u * 9), d * (.7 + .5 * (1 - v)) + .05); }
+  g.computeVertexNormals(); g.rotateY(ry); g.translate(x, 0, z); addMesh(curtM, g, true); }
 // steel door frame on the stairwell side of an apartment door (wall at x = cx, door span B.aptDoor)
 function doorFrame(cx, y) {
   const { z0, z1 } = B.aptDoor; const o = { collide: false, uv: 1 };
@@ -122,7 +138,8 @@ function furn(name, x, y, z, ry = 0, opts = {}) {
   const F = A.models.furniture; if (!F) return null; const src = F.scene.getObjectByName(name); if (!src) return null;
   const o = src.clone(true); o.position.set(x, y, z); o.rotation.set(0, ry, 0);
   const s = opts.s ?? 1; if (Array.isArray(s)) o.scale.set(s[0], s[1], s[2]); else o.scale.setScalar(s);
-  o.traverse(m => { if (!m.isMesh) return; m.castShadow = true; m.receiveShadow = true; m.material = m.material.clone(); const mt = m.material; mt.roughness = opts.rough ?? .72; mt.metalness = Math.min(mt.metalness, .2); mt.envMapIntensity = .8; if (opts.tint) mt.color.multiply(new THREE.Color(opts.tint)); if (opts.darken) mt.color.multiplyScalar(opts.darken); mt.dithering = true; });
+  o.traverse(m => { if (!m.isMesh) return; m.castShadow = true; m.receiveShadow = true; m.material = m.material.clone(); const mt = m.material; mt.roughness = opts.rough ?? .72; mt.metalness = Math.min(mt.metalness, .2); mt.envMapIntensity = .8; if (opts.tint) mt.color.multiply(new THREE.Color(opts.tint)); if (opts.darken) mt.color.multiplyScalar(opts.darken); mt.dithering = true;
+    if (opts.kind === 'fabric') layer(mt, 'fab', L_FABRIC); else if (opts.kind === 'wood') layer(mt, 'wood', L_WOOD); });
   G.scene.add(o); o.updateMatrixWorld(true);
   if (opts.collide !== false) { const b = new THREE.Box3().setFromObject(o); b.min.addScalar(.03); b.max.addScalar(-.03); const sz = b.getSize(new THREE.Vector3()); const c = b.getCenter(new THREE.Vector3()); if (sz.x > .05 && sz.y > .05 && sz.z > .05) G.colliders.push(new THREE.BoxGeometry(sz.x, sz.y, sz.z).translate(c.x, c.y, c.z)); }
   return o;
@@ -138,7 +155,7 @@ function doorLeaf(w, h, t = .044) {
   const gs = []; let mat = null; src.updateMatrixWorld(true); src.traverse(m => { if (m.isMesh) { const g = m.geometry.clone(); g.applyMatrix4(m.matrix); gs.push(g); mat = mat || m.material; } });
   const g = mergeGeometries(gs.map(q => q.index ? q.toNonIndexed() : q)); g.computeBoundingBox(); const b = g.boundingBox;
   g.translate(-(b.min.x + b.max.x) / 2, -b.min.y, -(b.min.z + b.max.z) / 2); g.scale(w / (b.max.x - b.min.x), h / (b.max.y - b.min.y), t / (b.max.z - b.min.z)); g.rotateY(-Math.PI / 2); g.translate(0, 0, w / 2);
-  const mt = mat.clone(); mt.roughness = .6; mt.color.multiplyScalar(.85); return new THREE.Mesh(g, mt);
+  const mt = mat.clone(); mt.roughness = .6; mt.color.multiplyScalar(.85); layer(mt, 'wood', L_WOOD); return new THREE.Mesh(g, mt);
 }
 
 // ---------- wear: a world-space layer over the interior finishes (interiorPaint in materials.js), added at build time ----------
@@ -159,7 +176,9 @@ const float CI_PZ[7]=float[7](-7.26,-7.26,-7.26,-7.26,-18.74,-18.74,-18.74);
 const vec4 CI_WX[10]=vec4[10](vec4(-17.8,-16.6,1.,2.2),vec4(-14.2,-13.,1.,2.2),vec4(-10.4,-9.,1.,2.3),vec4(-17.4,-16.2,1.1,2.2),vec4(-9.8,-7.6,-1.,2.4),vec4(-14.3,-13.4,-1.,2.1),vec4(-17.3,-16.4,-1.,2.1),vec4(-12.6,-11.8,-1.,2.1),vec4(-16.2,-15.2,-1.,2.1),vec4(-8.3,-7.3,-1.,2.1));
 const float CI_PX[10]=float[10](33.26,33.26,33.26,46.74,39.4,40.2,40.2,41.8,41.8,43.4);
 const vec3 CI_SW[6]=vec3[6](vec3(39.33,-9.5,1.3),vec3(40.26,-13.1,1.3),vec3(41.74,-12.95,1.3),vec3(33.3,-8.3,1.3),vec3(43.33,-9.,1.3),vec3(43.5,-8.62,1.32));
-uniform float uTile;
+uniform float uTile;float ciR=0.;
+float ciSeg(vec2 p,vec2 a,vec2 b){vec2 pa=p-a,ba=b-a;return length(pa-ba*clamp(dot(pa,ba)/dot(ba,ba),0.,1.));}
+const vec4 CI_LN[8]=vec4[8](vec4(43.4,-7.8,42.4,-8.6),vec4(42.4,-8.6,41.,-11.),vec4(41.,-11.,41.,-17.),vec4(41.,-15.7,43.8,-15.9),vec4(42.4,-8.6,39.4,-8.8),vec4(39.4,-8.8,36.6,-10.3),vec4(41.,-13.85,38.,-13.9),vec4(41.,-16.85,37.4,-17.1));
 const vec4 CI_RM[8]=vec4[8](vec4(33.26,39.34,-12.34,-7.26),vec4(39.46,43.32,-9.94,-7.26),vec4(40.26,41.74,-18.74,-9.94),vec4(41.86,43.32,-13.54,-10.06),vec4(41.86,46.74,-18.74,-13.66),vec4(33.26,40.14,-15.34,-12.46),vec4(33.26,40.14,-18.74,-15.46),vec4(43.47,46.74,-13.53,-7.26));
 `;
 const CI_MAIN = `
@@ -188,6 +207,16 @@ const CI_MAIN = `
    c*=mix(1.,.95+.08*n1.b,smoothstep(.655,.665,pv)); c*=1.-.16*smoothstep(.645,.655,pv)*(1.-smoothstep(.665,.675,pv));
    float sc=smoothstep(.6,.72,texture2D(tNc,vec2(al*.8,hy*9.)+.13).g)*(1.-smoothstep(.32,.5,hy))*step(.1,hy)+smoothstep(.64,.74,texture2D(tNc,vec2(al*.6,hy*7.)+.61).b)*smoothstep(.72,.78,hy)*(1.-smoothstep(.9,.97,hy))*.7;
    c*=1.-.3*clamp(sc,0.,1.);
+   // The stair core read clean from the landing below: its wear was all fine detail. Five families' years show as broad
+   // tone breaks instead: grime clouds heaviest low down, the rubbed band along the flights, and roller-painted patches in a
+   // slightly different paint over repairs (only above the oil-painted dado; nobody repaints that).
+   if(core){ vec4 m1=texture2D(tNc,fp*.21+.73); vec4 m2=texture2D(tNc,fp*.6+.29);
+    float cl=smoothstep(.3,.72,m1.r*.65+m2.g*.5);
+    c*=mix(vec3(1.),vec3(.6,.57,.51),cl*(.5+.5*(1.-smoothstep(.2,2.4,hy))));
+    vec2 pi=floor(vec2(al,wp.y)/vec2(1.3,.95)+(m2.b-.5)*.3); float ph=ciH(pi.x*5.3+pi.y*11.9);
+    if(ph>.68&&hy>1.06) c*=mix(vec3(1.07,1.06,1.02),vec3(.9,.89,.86),fract(ph*7.));
+    c*=1.-.32*smoothstep(.78,.95,hy)*(1.-smoothstep(1.22,1.42,hy))*smoothstep(.3,.6,m2.r);
+    c*=1.-.18*smoothstep(.0,1.6,hy-1.4)*smoothstep(.4,.7,m1.b); }
    if(uCiQ>.5){
     float gh=0.;
     if(!zf&&hy>.5&&hy<1.95){ for(int i=4;i<10;i++){ if(abs(wp.x-CI_PX[i])>.2)continue; float d=min(abs(al-CI_WX[i].x),abs(al-CI_WX[i].y)); gh+=exp(-d*d/.025)*smoothstep(.5,.95,hy)*(1.-smoothstep(1.5,1.95,hy)); } }
@@ -224,6 +253,15 @@ const CI_MAIN = `
    if(de<0.)de=.6;
    c=mix(c,c*vec3(.78,.74,.66),(1.-smoothstep(0.,.06+.24*n1.r,de))*.85);
    c*=1.-.16*smoothstep(.6,.72,n1.b)*n2.g;
+   // traffic lanes: grit scours the marble pale and matt along the routes through the flat, packs dark into the grout
+   // and pits, and dishes the middle of every stair tread (the walking line of each flight)
+   float ln=1e3; if(abs(wp.y-9.4)<.15) for(int i=0;i<8;i++) ln=min(ln,ciSeg(wp.xz,CI_LN[i].xy,CI_LN[i].zw));
+   if(core){ ln=min(ln,min(ciSeg(wp.xz,vec2(43.5,-7.85),vec2(46.,-8.3)),ciSeg(wp.xz,vec2(44.3,-12.7),vec2(46.1,-12.7))));
+    if(wp.z<-8.4&&wp.z>-12.2) ln=min(ln,min(abs(wp.x-46.),abs(wp.x-44.3))*1.2); }
+   float tw=exp(-ln*ln/.13)*(.55+.45*smoothstep(.25,.7,n1.g+n2.b*.3));
+   float lum=dot(c,vec3(.333));
+   c=mix(c,mix(vec3(lum),c,.55)*1.05,tw*.45); c*=mix(1.,mix(.66,1.,smoothstep(.1,.42,lum)),tw); c*=1.-.12*tw*smoothstep(.5,.7,n2.r);
+   ciR=.32*tw;
   }
   diffuseColor.rgb=c;
  }
@@ -236,9 +274,59 @@ function ciWear(mat, tile = 0) {
   const prev = mat.onBeforeCompile, key = mat.customProgramCacheKey.bind(mat);
   mat.onBeforeCompile = function (sh, r) { prev.call(this, sh, r); Object.assign(sh.uniforms, CIU, { uTile });
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWPc;varying vec3 vWNc;').replace('#include <fog_vertex>', '#include <fog_vertex>\nvWPc=(modelMatrix*vec4(transformed,1.)).xyz;vWNc=normalize(mat3(modelMatrix)*objectNormal);');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\n' + CI_PARS).replace('#include <color_fragment>', '#include <color_fragment>\n' + CI_MAIN); };
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\n' + CI_PARS).replace('#include <color_fragment>', '#include <color_fragment>\n' + CI_MAIN).replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor=min(1.,roughnessFactor+ciR);'); };
   mat.customProgramCacheKey = () => key() + '|ciw';
 }
+
+// ---------- surface layers for furniture, steel and fabric (high/medium quality; low keeps the plain maps) ----------
+// One splice point for each: `col` edits diffuseColor with wp/wn (world) and op/on (object space) in scope and may set
+// lR/lM, which offset roughness and metalness after the maps are read. Object space keeps a pattern glued to a door
+// that swings or a sofa that was rotated into place; merged buckets have object space = world space.
+const LU = { tNl: { value: null }, uLq: { get value() { return G.quality || 0; } } };
+function layer(mat, key, col, pars = '', uni = {}) {
+  LU.tNl.value = TEX.noise; const prev = mat.onBeforeCompile, pk = mat.customProgramCacheKey.bind(mat);
+  mat.onBeforeCompile = function (sh, r) { prev.call(this, sh, r); Object.assign(sh.uniforms, LU, uni);
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWPl;varying vec3 vWNl;varying vec3 vOPl;varying vec3 vONl;').replace('#include <fog_vertex>', '#include <fog_vertex>\nvWPl=(modelMatrix*vec4(transformed,1.)).xyz;vWNl=normalize(mat3(modelMatrix)*objectNormal);vOPl=transformed;vONl=objectNormal;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vWPl;varying vec3 vWNl;varying vec3 vOPl;varying vec3 vONl;uniform sampler2D tNl;uniform float uLq;float lR=0.,lM=0.;\nfloat lH(float n){return fract(sin(n*12.9898)*43758.5453);}\n' + pars)
+      .replace('#include <color_fragment>', '#include <color_fragment>\nif(uLq>.5){vec3 wp=vWPl;vec3 wn=normalize(vWNl);vec3 op=vOPl;vec3 on=normalize(vONl);\n' + col + '\n}')
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor=clamp(roughnessFactor+lR,.04,1.);')
+      .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\nmetalnessFactor=clamp(metalnessFactor+lM,0.,1.);'); };
+  mat.customProgramCacheKey = () => pk() + '|ly' + key; return mat;
+}
+// Upholstery: a coarse weave that fades out before it can shimmer, slubby yarn streaks that still read at a few metres,
+// the nap rubbed pale and flat where people sit, and body-oil grime and old spills.
+const L_FABRIC = `float fw=length(fwidth(op))+1e-5; vec3 an=abs(on); vec2 fq=an.y>.6?op.xz:(an.x>an.z?op.zy:op.xy);
+ float wv=sin(fq.x*1600.)*sin(fq.y*1600.)*(1.-smoothstep(.0015,.005,fw));
+ float sl=texture2D(tNl,vec2(fq.x*1.5,fq.y*45.)).r*.6+texture2D(tNl,vec2(fq.x*45.,fq.y*1.5)+.5).g*.4;
+ vec4 n1=texture2D(tNl,wp.xz*.8+wp.y*.31+.17); vec4 n2=texture2D(tNl,fq*2.3+.4);
+ diffuseColor.rgb*=(1.+.1*wv)*mix(.88,1.08,sl)*mix(.86,1.05,n1.g);
+ float wr=smoothstep(.55,.9,wn.y)*smoothstep(.3,.65,n1.r);
+ float lm=dot(diffuseColor.rgb,vec3(.3,.59,.11)); diffuseColor.rgb=mix(diffuseColor.rgb,mix(vec3(lm),diffuseColor.rgb,.5)*1.25,wr*.6);
+ diffuseColor.rgb*=1.-.25*smoothstep(.6,.7,n2.g)*n1.b; lR=-.1*wr;`;
+// Veneer and solid wood: grain runs along a top's length and up a carcass side, in strips of slightly different tone;
+// tops are dulled, ringed and scratched where cups and elbows go.
+const L_WOOD = `vec3 an=abs(on); vec2 gq=an.y>.5?op.xz:vec2(op.y,an.x>an.z?op.z:op.x);
+ float g1=texture2D(tNl,vec2(gq.x*.25,gq.y*7.)).r; float g2=texture2D(tNl,vec2(gq.x*.9,gq.y*31.)+.3).g; float g3=texture2D(tNl,vec2(gq.x*3.,gq.y*90.)+.6).b;
+ float st=lH(floor(gq.y/.11)+floor(gq.x/1.3)*7.);
+ diffuseColor.rgb*=mix(.8,1.1,g1*.55+g2*.3+g3*.15)*(.9+.17*st);
+ if(wn.y>.6){ vec4 n1=texture2D(tNl,wp.xz*1.7+.2); float sc=smoothstep(.72,.8,texture2D(tNl,vec2(wp.x*9.+wp.z*3.,wp.z*.7)).g);
+  diffuseColor.rgb*=1.-.15*sc-.12*smoothstep(.6,.75,n1.r); lR=.15*smoothstep(.4,.7,n1.b)+.1*sc; }`;
+// Painted steel (gas cylinders, apartment doors): paint knocked off in chips that show grey primer, then bare steel with a
+// rust halo that bleeds down the face; chips crowd the edges, the kick zone and around the lock.
+const L_STEEL = `vec3 an=abs(on); vec2 fq=an.y>.6?op.xz:vec2(an.x>an.z?op.z:op.x,op.y);
+ float u=fq.x*uEd.x+uEd.y; float ed=uEd.z>.5?min(u,1.-u):1.; float hy=uEd.w<-50.?(wp.y<3.4?wp.y:mod(wp.y-3.4,3.)):op.y-uEd.w;
+ vec4 n1=texture2D(tNl,fq*1.9+.13); vec4 n2=texture2D(tNl,fq*7.3+.51);
+ float th=.63-.13*(1.-smoothstep(.0,.06,ed))-.1*(1.-smoothstep(.05,.3,hy))-.08*(1.-smoothstep(.0,.15,abs(hy-1.)))*(1.-smoothstep(.0,.12,abs(u-.88)));
+ float v=n1.r*.55+n2.g*.5; float ch=smoothstep(th,th+.012,v), bare=smoothstep(th+.03,th+.045,v);
+ float run=smoothstep(.5,.8,texture2D(tNl,vec2(fq.x*1.9,fq.y*.25)+.13).r)*smoothstep(.55,.7,n2.b)*(1.-ch);
+ vec3 rust=vec3(.36,.2,.1)*mix(.7,1.2,n2.r);
+ diffuseColor.rgb*=mix(.88,1.05,n1.b)*(1.-.18*(1.-smoothstep(.0,.25,hy)));
+ diffuseColor.rgb=mix(diffuseColor.rgb,mix(diffuseColor.rgb,rust,.6),run*.5);
+ diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.45,.45,.42),ch*(1.-bare));
+ diffuseColor.rgb=mix(diffuseColor.rgb,mix(vec3(.3,.29,.28),rust,smoothstep(.5,.8,n2.a)),bare);
+ lR=bare*(.25*n2.a)+ch*.1; lM=bare*(1.-smoothstep(.5,.8,n2.a))*.55;`;
+// ed: u = across-width coordinate scale and offset, edges on/off, floor height in object space (-99: merged, world floors)
+const steelM = (color, rough, ed, map = null) => layer(new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: 0, map }), 'st', L_STEEL, 'uniform vec4 uEd;', { uEd: { value: new THREE.Vector4(...ed) } });
 
 // Decals with authored shapes (cracks, leak stains, mould, soot, hand grime, a filled hole, a child's drawing, scuffs), all
 // in one atlas and one merged mesh. They multiply the frame (white = no change), so they darken correctly under any light.
@@ -279,11 +367,12 @@ function dec(cell, x, y, z, n, w, h, rot = 0, flip = false) { const g = new THRE
   const o = .004, d = { x: [o, 0, 0], '-x': [-o, 0, 0], z: [0, 0, o], '-z': [0, 0, -o], y: [0, o, 0], '-y': [0, -o, 0] }[n]; g.translate(x + d[0], y + d[1], z + d[2]); meshes.push([decalM, g, false]); }
 
 // 12 kg LPG cylinder: body, domed shoulder, foot ring, valve and the handle ring that guards it
-function gasCyl(x, z, yb) { const b = new THREE.CylinderGeometry(.15, .15, .5, 12); b.translate(x, yb + .3, z); addMesh(MAT.plasticBlue, b, true);
-  const tp = new THREE.SphereGeometry(.15, 12, 3, 0, Math.PI * 2, 0, Math.PI / 2); tp.scale(1, .45, 1); tp.translate(x, yb + .55, z); addMesh(MAT.plasticBlue, tp, true);
-  const ft = new THREE.CylinderGeometry(.13, .14, .06, 12, 1, true); ft.translate(x, yb + .03, z); addMesh(MAT.plasticBlue, ft, true);
+let cylM;
+function gasCyl(x, z, yb) { const b = new THREE.CylinderGeometry(.15, .15, .5, 12); b.translate(x, yb + .3, z); addMesh(cylM, b, true);
+  const tp = new THREE.SphereGeometry(.15, 12, 3, 0, Math.PI * 2, 0, Math.PI / 2); tp.scale(1, .45, 1); tp.translate(x, yb + .55, z); addMesh(cylM, tp, true);
+  const ft = new THREE.CylinderGeometry(.13, .14, .06, 12, 1, true); ft.translate(x, yb + .03, z); addMesh(cylM, ft, true);
   const v = new THREE.CylinderGeometry(.02, .025, .09, 6); v.translate(x, yb + .66, z); addMesh(MAT.steel, v, true);
-  const ring = new THREE.TorusGeometry(.085, .012, 4, 10); ring.rotateX(Math.PI / 2); ring.translate(x, yb + .71, z); addMesh(MAT.plasticBlue, ring, true); }
+  const ring = new THREE.TorusGeometry(.085, .012, 4, 10); ring.rotateX(Math.PI / 2); ring.translate(x, yb + .71, z); addMesh(cylM, ring, true); }
 
 // Floor 3 and the stair core, lived in: tile skirting, wear decals, and what a crowded family flat holds after months of war
 // (guests' mattresses stacked by day, laundry on a line, water in bottles, aid cartons, a burner on a gas cylinder because
@@ -411,6 +500,10 @@ export function buildTarget() {
   for (const m of [MAT.intWall, MAT.intWall2, MAT.intWall3, MAT.stairWall, MAT.ceiling, MAT.tilesB, MAT.terrazzo]) ciWear(m, m === MAT.intWall3 ? 1 : 0);
   decalM = new THREE.MeshBasicMaterial({ map: wearAtlas(), blending: THREE.MultiplyBlending, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, fog: false });
   glassMat =new THREE.MeshStandardMaterial({ color: '#9fb4c4', roughness: .05, metalness: .1, transparent: true, opacity: .28, envMapIntensity: 1.4, side: THREE.DoubleSide, depthWrite: false });
+  // LPG cylinders are painted steel, not plastic: a faded blue-grey enamel; the apartment doors keep their pressed-panel
+  // paint map with chips over it (the breach door in its own object space, the merged closed doors in world space)
+  cylM = steelM('#4d6276', .5, [1, 0, 0, -99]); aptDoorM = steelM('#c4baae', .55, [-1, 0, 1, 0], MAT.aptDoor.map); aptDoorW = steelM('#c4baae', .55, [1, 8.3, 1, -99], MAT.aptDoor.map);
+  fanM = std2('#d6cfbf', .55); curtM = layer(new THREE.MeshStandardMaterial({ map: curtainTex(), roughness: .95, side: THREE.DoubleSide }), 'fab', L_FABRIC);
   bottleMat = new THREE.MeshStandardMaterial({ color: '#bcd4e0', roughness: .15, transparent: true, opacity: .6 });
   tubeMat = new THREE.MeshBasicMaterial({ color: '#f2f6ff' }); bulbMat = new THREE.MeshStandardMaterial({ color: '#fff3d6', emissive: '#ffdca0', emissiveIntensity: .5, roughness: .2 });
   const { x0, x1, z0, z1, levels: Lv, core } = B; const H = Lv[5];
@@ -475,7 +568,7 @@ export function buildTarget() {
     if (f === 3) wall('x', core.z0 - .077, core.x0, x1 - T, y, y2, [], Wkit, .012, { uv: 2, collide: false, cast: false });
     if (f < 4) stairs(y, Lv[f + 1]);
     // closed apartment doors on other floors
-    if (f > 0 && f !== 3) { const dg = new THREE.BoxGeometry(.05, 2.08, 1.0); dg.translate(core.x0 + .005, y + 1.04, (B.aptDoor.z0 + B.aptDoor.z1) / 2); meshes.push([MAT.aptDoor, dg, true]); G.colliders.push(dg.clone()); doorFrame(core.x0, y); }
+    if (f > 0 && f !== 3) { const dg = new THREE.BoxGeometry(.05, 2.08, 1.0); dg.translate(core.x0 + .005, y + 1.04, (B.aptDoor.z0 + B.aptDoor.z1) / 2); meshes.push([aptDoorW, dg, true]); G.colliders.push(dg.clone()); doorFrame(core.x0, y); }
     // dark interiors behind other floors' windows (so openings don't look hollow)
     // (painted walls, not black boards: the baked visibility lights them dimly through the window like a real back room)
     if (f > 0 && f !== 3) { box(MAT.intWall2, x0 + T + .02, core.x0 - .1, y + .01, y + 2.7, z1 - T - 3, z1 - T - 2.9, { collide: false, cast: false }); box(MAT.intWall, x0 + T + .02, x1 - T - .1, y + .01, y + 2.7, z0 + T + 2.9, z0 + T + 3, { collide: false, cast: false }); box(MAT.intWall2, x0 + T + 2.9, x0 + T + 3, y + .01, y + 2.7, z0 + T, z1 - T, { collide: false, cast: false });
@@ -508,7 +601,7 @@ export function buildTarget() {
         if (f !== 3) { const n = 3 + Math.floor(sr() * 6); // shoes and sandals left on the landing beside the door (no colliders: the team walks through here)
           for (let k = 0; k < n; k++) { const col = sp(shoeM); for (const side of [-1, 1]) { const g = new THREE.BoxGeometry(.1, .06, .26); g.rotateY(sr() * .5 - .25); g.translate(44.45 + (k % 3) * .24 + side * .06, y + .03, -8.15 + Math.floor(k / 3) * .32 + sr() * .06); addMesh(col, g, true); } }
           if (sr() < .6) { const cr = boxUV(.4, .3, .3, .5); cr.translate(46.4, y + .15, -7.6); addMesh(sp([MAT.plasticBlue, MAT.plasticGreen, MAT.plastic]), cr, true); }
-          else { const gc = new THREE.CylinderGeometry(.15, .15, .55, 12); gc.translate(46.45, y + .275, -7.6); addMesh(MAT.plasticBlue, gc, true); } }
+          else gasCyl(46.45, -7.6, y); }
       }
       if (sr() < .7) { const q = new THREE.PlaneGeometry(1.2, .6); q.rotateY(Math.PI / 2); q.translate(sx + .006, y + 1.25 + sr() * .3, -10.6 - sr() * 1.2); addMesh(scribM, q, false); }
     }
@@ -542,17 +635,20 @@ export function buildTarget() {
   windowUnit('x', z0 + T / 2, 44.2, 45.6, y + 1.1, y + 2.2, 1, {});                    // kitchen north
   windowUnit('z', x1 - T / 2, -17.4, -16.2, y + 1.1, y + 2.2, -1, {});                 // kitchen east
   // curtains in salon
-  if (A.models.furniture) { for (const [a, b] of [[34.2, 35.8], [37.4, 39.0]]) for (const sx of [-1, 1]) furn('Curtain_01', (a + b) / 2 + sx * (b - a) / 2 + sx * .02, y + .18, z1 - T - .1, Math.PI / 2, { s: [1, .95, .36], collide: false, rough: 1 });
-    furn('Curtain_01', x0 + T + .1, y + .18, -8.55, 0, { s: [1, .95, .36], collide: false, rough: 1 }); }
-  else for (const [a, b] of [[34.2, 35.8], [40.4, 42.0]]) { const c = new THREE.PlaneGeometry(.55, 1.6, 8, 1); const p = c.attributes.position; for (let i = 0; i < p.count; i++) p.setZ(i, Math.sin(p.getX(i) * 22) * .035); c.computeVertexNormals(); c.translate(a + .2, y + 1.55, z1 - T - .12); addMesh(MAT.fabricSofa2, c, true); }
+  // (procedural panels with real folds replace the model's flat columns: one merged draw for all five, plus the rods)
+  { let sd = 70; const zc = z1 - T - .16;
+    for (const [a, b] of [[34.2, 35.8], [37.4, 39.0]]) { curtain(a - .14, zc, Math.PI, -.5, y + .12, y + 2.5, sd++); curtain(b + .14, zc, Math.PI, .5, y + .12, y + 2.5, sd++);
+      const rod = new THREE.CylinderGeometry(.012, .012, b - a + .6, 6); rod.rotateZ(Math.PI / 2); rod.translate((a + b) / 2, y + 2.52, zc + .05); addMesh(MAT.steel, rod, false); }
+    curtain(x0 + T + .16, -8.6, Math.PI / 2, .55, y + .12, y + 2.5, sd++); }
+  if (false) for (const [a, b] of [[34.2, 35.8], [40.4, 42.0]]) { const c = new THREE.PlaneGeometry(.55, 1.6, 8, 1); const p = c.attributes.position; for (let i = 0; i < p.count; i++) p.setZ(i, Math.sin(p.getX(i) * 22) * .035); c.computeVertexNormals(); c.translate(a + .2, y + 1.55, z1 - T - .12); addMesh(MAT.fabricSofa2, c, true); }
   // salon furniture
   const carpet = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 3.8), MAT.rugs[0]); carpet.rotation.x = -Math.PI / 2; carpet.rotation.z = Math.PI / 2; carpet.position.set(36.2, y + .012, -9.8); carpet.receiveShadow = true; G.scene.add(carpet);
   const REAL = !!A.models.furniture;
   if (REAL) {
-    furn('Sofa_01', 34.5, y, -11.13, 0, { tint: '#9a6a52', rough: .95 });            // L-shaped sofa in the corner (upholstery tinted to a worn brown)
-    furn('SofaB_01', 38.55, y, -11.45, -Math.PI / 2 - .35, { tint: '#9a6a52', rough: .95 });
-    furn('CoffeeTable_01', 36.0, y, -10.0, 0, { darken: .8 });
-    furn('TVCabinet_01', 36.5, y, -7.68, Math.PI / 2, { s: [1, 1, .85], darken: .75 });
+    furn('Sofa_01', 34.5, y, -11.13, 0, { tint: '#9a6a52', rough: .95, kind: 'fabric' });            // L-shaped sofa in the corner (upholstery tinted to a worn brown)
+    furn('SofaB_01', 38.55, y, -11.45, -Math.PI / 2 - .35, { tint: '#9a6a52', rough: .95, kind: 'fabric' });
+    furn('CoffeeTable_01', 36.0, y, -10.0, 0, { darken: .8, kind: 'wood' });
+    furn('TVCabinet_01', 36.5, y, -7.68, Math.PI / 2, { s: [1, 1, .85], darken: .75, kind: 'wood' });
     furn('TV_01', 36.5, y + .49, -7.68, Math.PI / 2, { s: .8, collide: false });
     floorMattress(38.4, -12.0, 0, 1.6, .7, MAT.mattress2);
   } else {
@@ -600,16 +696,16 @@ export function buildTarget() {
   }
   gasCyl(46.35, -14.1, y);
   for (let i = 0; i < 4; i++) bottle(43.9 + i * .3, y, -14.2, true);
-  if (REAL) { furn('KitchenTable_01', 42.95, y, -17.5, 0, { s: [1, .95, .7], darken: .85 }); furn('ChairA_01', 42.35, y, -17.6, Math.PI / 2, { collide: false }); furn('ChairA_01', 43.55, y, -17.2, -Math.PI / 2, { collide: false }); }
+  if (REAL) { furn('KitchenTable_01', 42.95, y, -17.5, 0, { s: [1, .95, .7], darken: .85, kind: 'wood' }); furn('ChairA_01', 42.35, y, -17.6, Math.PI / 2, { collide: false }); furn('ChairA_01', 43.55, y, -17.2, -Math.PI / 2, { collide: false }); }
   else { table(44.3, -16.2, 1.0, .7, .75, MAT.woodLight); chair(44.3, -15.6, Math.PI, MAT.plasticGreen); chair(43.6, -16.3, Math.PI / 2, MAT.plastic);
     const pot = new THREE.Mesh(new THREE.CylinderGeometry(.14, .12, .16, 12), MAT.steel); pot.position.set(45.4, y + 1.08, z0 + T + .3); G.scene.add(pot); }
   // bathroom
   box(MAT.plastic, 42.0, 42.5, y, y + .42, -12.1, -11.3, { uv: 1 }); const buck = new THREE.CylinderGeometry(.16, .13, .3, 10); buck.translate(43.0, y + .15, -10.4); addMesh(MAT.plasticBlue, buck, true);
   // bedroom 1 (family): bed + wardrobe + mattress
   if (REAL) {
-    furn('Bed_01', 35.3, y, -14.33, 0, { darken: .9 }); furn('NightStand_01', 33.72, y, -15.1, 0, { darken: .85 });
-    furn('Wardrobe_01', 38.9, y, -15.0, 0, { darken: .85 });
-    furn('ShoeRack_01', 42.6, y, -9.8, 0, { darken: .85 });
+    furn('Bed_01', 35.3, y, -14.33, 0, { darken: .9 }); furn('NightStand_01', 33.72, y, -15.1, 0, { darken: .85, kind: 'wood' });
+    furn('Wardrobe_01', 38.9, y, -15.0, 0, { darken: .85, kind: 'wood' });
+    furn('ShoeRack_01', 42.6, y, -9.8, 0, { darken: .85, kind: 'wood' });
     furn('Trash_01', 46.3, y, -15.3, 0, { collide: false });
     // interior doors (open) and architraves
     const dl = (w, x, z, ry) => { const d = doorLeaf(w, 2.06); if (d) { d.position.set(x, y, z); d.rotation.y = ry; d.castShadow = d.receiveShadow = true; G.scene.add(d); } };
@@ -630,7 +726,7 @@ export function buildTarget() {
   // ----- doors -----
   // breach door: apartment entrance from the stair landing (hinge at north edge, opens inward/west)
   const dg = new THREE.BoxGeometry(.05, 2.08, 1.0); dg.translate(0, 1.04, -.5);
-  const door = new THREE.Mesh(dg, MAT.aptDoor); doorFrame(core.x0, y); door.position.set(core.x0 + .04, y, B.aptDoor.z1); door.castShadow = true; G.scene.add(door);
+  const door = new THREE.Mesh(dg, aptDoorM); doorFrame(core.x0, y); door.position.set(core.x0 + .04, y, B.aptDoor.z1); door.castShadow = true; G.scene.add(door);
   const knob = new THREE.Mesh(new THREE.SphereGeometry(.035, 8, 6), MAT.steel); knob.position.set(-.05, 1.0, -.88); door.add(knob);
   B.doors.apt = { mesh: door, open: false, blocker: { x0: core.x0 - .12, x1: core.x0 + .12, z0: B.aptDoor.z0, z1: B.aptDoor.z1, y0: y, y1: y + 2.1 } };
   B.blockers.push(B.doors.apt.blocker);
@@ -643,9 +739,16 @@ export function buildTarget() {
   // ----- fixtures and small details (floor 3) -----
   tube(36.4, yc, -9.4, 0); tube(42.6, yc, -11.2, Math.PI / 2); tube(36.6, yc, -13.9, 0); tube(36.6, yc, -17.1, 0); tube(44.6, yc, -16.4, 0); bulb(42.9, yc, -12.9);
   { // ceiling fan over the salon (no power: still)
+    // ceiling canopy over the hook, down-rod, a motor drum with its trim ring, and pressed-steel blades on brackets, each
+    // pitched and sagging a little differently (years of being hung on and knocked with a broom)
     const fx = 36.3, fz = -9.9; const rod = new THREE.CylinderGeometry(.015, .015, .35, 6); rod.translate(fx, yc - .17, fz); meshes.push([MAT.metalDark, rod, false]);
-    const hub = new THREE.CylinderGeometry(.11, .09, .12, 14); hub.translate(fx, yc - .4, fz); meshes.push([MAT.plastic, hub, true]);
-    for (let k = 0; k < 3; k++) { const bl = new THREE.BoxGeometry(.62, .012, .12); bl.translate(.42, 0, 0); bl.rotateX(.08); bl.rotateY(k * 2.094 + .3); bl.translate(fx, yc - .42, fz); meshes.push([MAT.plastic, bl, true]); }
+    const cn = new THREE.CylinderGeometry(.045, .075, .07, 12); cn.translate(fx, yc - .035, fz); meshes.push([fanM, cn, false]);
+    const hub = new THREE.CylinderGeometry(.13, .1, .13, 16); hub.translate(fx, yc - .4, fz); meshes.push([fanM, hub, true]);
+    const tr = new THREE.CylinderGeometry(.133, .133, .018, 16); tr.translate(fx, yc - .37, fz); meshes.push([MAT.metalDark, tr, false]);
+    const cap = new THREE.SphereGeometry(.1, 12, 4, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2); cap.scale(1, .45, 1); cap.translate(fx, yc - .465, fz); meshes.push([fanM, cap, false]);
+    for (let k = 0; k < 3; k++) { const bl = new THREE.BoxGeometry(.6, .008, .13, 6, 1, 1); const p = bl.attributes.position; for (let i = 0; i < p.count; i++) { const t = p.getX(i) / .6 + .5; p.setY(i, p.getY(i) - t * t * (.018 + k * .008)); }
+      bl.computeVertexNormals(); bl.translate(.45, 0, 0); bl.rotateX(.1 + k * .03); bl.rotateY(k * 2.094 + .3); bl.translate(fx, yc - .43, fz); meshes.push([fanM, bl, true]);
+      const br = new THREE.BoxGeometry(.16, .01, .03); br.translate(.16, .012, 0); br.rotateY(k * 2.094 + .3); br.translate(fx, yc - .43, fz); meshes.push([MAT.metalDark, br, false]); }
   }
   // surface-run conduit and switches (typical retrofitted wiring)
   const conduit = (xa, xb, za, zb, yy) => { const g = new THREE.BoxGeometry(Math.max(.025, Math.abs(xb - xa)), .025, Math.max(.025, Math.abs(zb - za))); g.translate((xa + xb) / 2, yy, (za + zb) / 2); meshes.push([MAT.plastic, g, false]); };
@@ -666,7 +769,7 @@ export function buildTarget() {
     // flour sacks, jerrycans, gas cylinder, stacked plastic chairs under the stairs
     for (let i = 0; i < 5; i++) { const sk = new THREE.CapsuleGeometry(.22, .35, 3, 8); sk.rotateZ(Math.PI / 2); sk.scale(1, .7, .8); sk.translate(43.95 + (i % 2) * .05, .18 + Math.floor(i / 2) * .26, -11.6 + (i % 3) * .55); meshes.push([MAT.tarp[1], sk, true]); }
     for (let i = 0; i < 3; i++) { const jc = boxUV(.3, .42, .18, 1); jc.translate(44.3 + i * .34, .21, -12.6); meshes.push([pick([MAT.plasticBlue, MAT.plasticGreen, MAT.plastic]), jc, true]); }
-    const gc = new THREE.CylinderGeometry(.16, .16, .6, 12); gc.translate(44.9, .3, -11.2); meshes.push([MAT.plasticBlue, gc, true]);
+    gasCyl(44.9, -11.2, 0);
     for (let i = 0; i < 4; i++) { const ch = boxUV(.44, .04, .42, 1); ch.translate(44.5, .45 + i * .07, -10.2); meshes.push([MAT.plastic, ch, true]); } const cl = new THREE.BoxGeometry(.46, .45, .44); cl.translate(44.5, .225, -10.2); meshes.push([MAT.plastic, cl, true]);
     G.colliders.push(new THREE.BoxGeometry(1.4, 1.1, 2.4).translate(44.2, .55, -11.4)); }
 
