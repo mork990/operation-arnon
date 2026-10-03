@@ -1,4 +1,4 @@
-// "The Fence" – Gaza border, 21 August 2021: bootstrap, render pipeline (main view + drone feed), loop
+// "The Shaft" – mission 4: bootstrap, render pipeline (main view + the "Zik" UAV feed), loop. Adapted from mission 2's main.js.
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -21,13 +21,9 @@ import { Weapon } from '../weapon.js';
 import { UI } from '../ui.js';
 import { Guide } from '../guide.js';
 import { VO, SPEAKERS } from '../vo.js';
-import { FVO, FSPEAKERS } from './vo.js';
-import { buildFenceWorld, updateWorld, hF, FL } from './world.js';
-import { Crowd } from './crowd.js';
+import { buildTunnelWorld, updateWorld, setThermal, hT, TL } from './world.js';
 import { Tablet } from './tablet.js';
-import { FenceMission, FSTAGES } from './mission.js';
-import { Gear } from './gear.js';
-import { FenceSound } from './sound.js';
+import { TunnelMission, TSTAGES, TSPEAKERS } from './mission.js';
 import { Command } from './command.js';
 import { bakeVolume, bakeSunShadow, occluderFrom, GIU } from '../gi.js';
 import { AutoExposure, EXPOSURE_GLSL, GRADE, GRADE_GLSL, GRADE_U, TONE_GLSL, TONE_U, installToneMapping } from '../exposure.js';
@@ -43,15 +39,16 @@ function err(msg) { const e = $('err'); e.hidden = false; e.textContent = msg; }
 addEventListener('error', e => { if (e.message) err('שגיאה בטעינת המשחק: ' + e.message); });
 addEventListener('unhandledrejection', e => { err('שגיאה בטעינת המשחק: ' + (e.reason && e.reason.message || e.reason)); });
 
-// this scene's voice lines replace the Arnon set
-for (const k of Object.keys(VO)) delete VO[k]; Object.assign(VO, FVO); Object.assign(SPEAKERS, FSPEAKERS);
+// no recorded voice here: radio lines are subtitles (mission.js adds them to VO as they are spoken)
+for (const k of Object.keys(VO)) delete VO[k]; Object.assign(SPEAKERS, TSPEAKERS); G.settings.voice = false;
 // no target building here
 Object.assign(B, { x0: 1e9, x1: 1e9 + 1, z0: 1e9, z1: 1e9 + 1, lights: [], blockers: [] });
-G.groundFn = hF;
-G.missionClock = 16 * 3600 + 50 * 60;
-// sun for 21 Aug, ~17:15 local, 31.5N 34.47E: elevation ~26 deg, azimuth ~266 deg (west, over Gaza)
-{ const el = THREE.MathUtils.degToRad(26), az = THREE.MathUtils.degToRad(266); G.sunDir.set(Math.cos(el) * Math.sin(az), Math.sin(el), -Math.cos(el) * Math.cos(az)).normalize(); }
-G.wind = V3(2.4, 0, .5); // afternoon sea breeze from the west: smoke and gas drift toward Israel
+G.groundFn = hT;
+G.missionClock = 5 * 3600 + 8 * 60;
+// dawn: the sun a few degrees over the eastern horizon behind the force (azimuth ~78 deg), so the commander looks west
+// at houses lit low and pink with long shadows, and the thermal feed still has the night's contrast
+{ const el = THREE.MathUtils.degToRad(7), az = THREE.MathUtils.degToRad(78); G.sunDir.set(Math.cos(el) * Math.sin(az), Math.sin(el), -Math.cos(el) * Math.cos(az)).normalize(); }
+G.wind = V3(-1.1, 0, .3); // a light land breeze at dawn: smoke drifts west, over the town
 
 // ---------- renderer & scene ----------
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false });
@@ -63,24 +60,22 @@ if (G.isTouch) renderer.capabilities.maxTextureSize = Math.min(renderer.capabili
 installToneMapping(renderer); renderer.toneMappingExposure = 1.08; // gain into the tone curve (exposure.js TONE): holds the build-23 mid-tones under the new shoulder
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 G.renderer = renderer;
-// late afternoon over a riot: tyre smoke and churned dust thicken the low air, the sun is low in the west, and the haze
-// glows gold looking into it (dust scatters forward) and goes dull tan looking east; a taller scale height than the
-// town's because the smoke columns carry the haze up. Visibility is a few kilometres, not a fog bank: the crowd at
-// 150-250 m keeps its colour in the low sun, and the town past a kilometre sinks into the haze.
-installFog({ ground: .0009, base: .00022, H: 45, toward: [1.3, 1.16, .96], away: [.86, .9, .97], sunPow: 5 });
+// dawn ground mist: dense and shallow (cold air pooled over the fields), warm toward the rising sun, blue-grey away
+// from it, so the town 200-400 m west fades into a cool haze while the houses near the force keep their colour
+installFog({ ground: .0016, base: .00026, H: 14, toward: [1.45, 1.08, .84], away: [.74, .82, .98], sunPow: 6 });
 const scene = new THREE.Scene(); G.scene = scene;
-scene.fog = new THREE.FogExp2('#d4bc9a', .0011);
+scene.fog = new THREE.FogExp2('#8e98a4', .0008);
 const camera = new THREE.PerspectiveCamera(72, 1, .05, 7000); G.camera = camera; scene.add(camera);
 G.clock = new THREE.Clock();
 
-const sun = new THREE.DirectionalLight('#ffd09a', 3.4); sun.castShadow = true; sun.shadow.bias = -.0003; sun.shadow.normalBias = .04;
+const sun = new THREE.DirectionalLight('#ffb27e', 2.6); sun.castShadow = true; sun.shadow.bias = -.0003; sun.shadow.normalBias = .04;
 // phones: a tighter live shadow box (fewer casters, a smaller map for the same texel size); the baked shadow of the
 // incident area takes over from ~40 m instead of ~54 m
 const SHX = G.isTouch ? 44 : 60, SUN_NEAR = G.isTouch ? 40 : 54;
 const sc = sun.shadow.camera; sc.left = -SHX; sc.right = SHX; sc.top = SHX; sc.bottom = -SHX; sc.near = 1; sc.far = 500;
 scene.add(sun, sun.target); G.sun = sun;
 // the sun's glare, shafts and ghosts are a post pass (sunfx.js)
-const hemi = new THREE.HemisphereLight('#c9cfd6', '#b08e66', 1.05); scene.add(hemi);
+const hemi = new THREE.HemisphereLight('#9fb0c8', '#6a5a4a', .9); scene.add(hemi);
 G.audio = new Audio();
 
 // ---------- post ----------
@@ -91,7 +86,7 @@ const mainPass = new RenderPass(scene, camera); composer.addPass(mainPass);
 let gtao = null, vmPass = null, fxaa = null, smaa = null, heat = null;
 const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), .3, .5, .97);
 const autoExp = G.autoExp = new AutoExposure();
-const sunFx = G.sunFx = new SunFx({ strength: 1.0, color: '#ffc98a' });
+const sunFx = G.sunFx = new SunFx({ strength: .8, color: '#ffb48a' });
 const grade = G.grade = new ShaderPass({ uniforms: { tDiffuse: { value: null }, uT: { value: 0 }, uHurt: { value: 0 }, uGas: { value: 0 }, uTx: { value: new THREE.Vector2(1 / 1280, 1 / 720) }, uSharp: { value: .35 }, uBino: { value: 0 }, uAspect: { value: 1.7 }, tExp: { value: null }, uKey: { value: 0 }, uAlpha: { value: 0 }, uEvLo: { value: 0 }, uEvHi: { value: 0 }, uEvBias: { value: 0 }, tSun: { value: null }, uSunUv: { value: new THREE.Vector2() }, uSunI: { value: 0 }, uSunCol: { value: new THREE.Vector3() }, uSunAsp: { value: 1 }, uOut: { value: 0 } },
   vertexShader: `varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
   // (sharpening works on x/(1+x): in linear HDR the unsharp mask rang around the sun disc)
@@ -112,17 +107,13 @@ const grade = G.grade = new ShaderPass({ uniforms: { tDiffuse: { value: null }, 
     c.rgb=filmFinish(c.rgb,vUv,uHurt*1.5+uGas*1.2,uT);gl_FragColor=vec4(toneOut(c.rgb),1.);if(uOut>.5)gl_FragColor=sRGBTransferOETF(gl_FragColor);}` });
 // The grade ends with the game's tone curve (toneLook, exposure.js; r170's OutputPass has no CUSTOM_TONE_MAPPING branch)
 // and also does the OutputPass's sRGB transfer (one full-screen pass less). The OutputPass stays in the chain for the
-// drone feed (its pass works on the linear image between the two, see uTone below) and for a built-in tone curve.
+// drone feed (its pass works on the tone-mapped linear image between the two) and for a built-in tone curve.
 grade.material.toneMapped = false;
 let outPass = null;
 Object.assign(grade.uniforms, autoExp.uniforms, sunFx.uniforms, GRADE_U, TONE_U); // shared objects: the adapted-exposure texture changes every frame
-// the drone feed is its own sensor with its own gain: it keeps the linear signal (the IR look's hot people sit above
-// 1.0 and read as bright cores only unclipped), so the game's tone curve is off while it is on
-grade.uniforms.uTone = { get value() { return !uav.enabled && renderer.toneMapping === THREE.CustomToneMapping ? 1 : 0; } };
-// golden hour: the warm/cool split is stronger than at noon (low sun, blue shade), with a little more contrast and colour
-// than the town's midday grade so the low sun reads; saturated colours roll off a little more
-Object.assign(GRADE, { con: 1.1, sat: 1.06, warm: [1.08, 1, .86], cool: [.95, .99, 1.05], roll: .2 });
-autoExp.uniforms.uEvBias.value = .95; // late-afternoon sand and sky meter bright; keep the golden hour glowing instead of pulled down to the midday key
+// dawn: blue shadows and a thin warm key; colour held back (the eye has not woken up), contrast a touch up
+Object.assign(GRADE, { con: 1.08, sat: .9, warm: [1.1, .98, .84], cool: [.9, .97, 1.08], roll: .2 });
+autoExp.uniforms.uEvBias.value = .8; // dawn should read as early light, not be metered up to midday
 // drone feed look: EO (washed, grainy, slightly soft) or IR white-hot (people rendered as hot silhouettes, see Crowd/Tablet)
 const uav = G.uavPass = new ShaderPass({ uniforms: { tDiffuse: { value: null }, uT: { value: 0 }, uIR: { value: 0 }, uTx: { value: new THREE.Vector2(1 / 1280, 1 / 720) } },
   vertexShader: `varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
@@ -130,10 +121,10 @@ const uav = G.uavPass = new ShaderPass({ uniforms: { tDiffuse: { value: null }, 
   void main(){vec2 u=vUv;float jit=(h(vec2(floor(u.y*240.),uT))-.5)*.0006;u.x+=jit;
     vec3 c=texture2D(tDiffuse,u).rgb*.5+(texture2D(tDiffuse,u+vec2(uTx.x,0.)).rgb+texture2D(tDiffuse,u-vec2(uTx.x,0.)).rgb+texture2D(tDiffuse,u+vec2(0.,uTx.y)).rgb+texture2D(tDiffuse,u-vec2(0.,uTx.y)).rgb)*.125;
     float l=dot(c,vec3(.299,.587,.114));
-    if(uIR>.5){ // white-hot: people/engines/fire bright, sunlit sand mid-grey, sky and shade dark
-      float t=l>.8?mix(.72,1.,smoothstep(.8,1.,l)):pow(clamp(l*1.05,0.,1.),1.7)*.72;c=vec3(t*.94+.03);}
+    if(uIR>.5){ // white-hot: people, engines and heat leaks bright; at dawn the ground has cooled, so the rest stays dark
+      float t=l>.8?mix(.72,1.,smoothstep(.8,1.,l)):pow(clamp(l*1.3,0.,1.),1.6)*.55;c=vec3(t*.94+.03);}
     else{c=mix(vec3(l),c,.62);c=(c-.5)*1.12+.5;c*=vec3(.98,1.,1.02);}
-    float g=(h(u*vec2(1234.,987.)+fract(uT*7.))-.5)*(uIR>.5?.09:.05);c+=g;
+    float g=(h(u*vec2(1234.,987.)+fract(uT*7.))-.5)*(uIR>.5?.05:.04);c+=g;
     vec2 d=vUv-.5;c*=1.-dot(d,d)*.7;
     gl_FragColor=vec4(clamp(c,0.,1.),1.);}` });
 uav.enabled = false;
@@ -147,7 +138,7 @@ function basePR(q) { const dpr = devicePixelRatio || 1; return G.isTouch ? [Math
 // judged the drop useless and gave the pixels back.
 function displayPR() { return G.isTouch ? internalPR() : Math.max(basePR(G.quality), Math.min(devicePixelRatio || 1, 2)); }
 function internalPR() { return basePR(G.quality) * dyn.scale; }
-const dyn = new DynRes(G.isTouch ? 'fence-dyn' : null); const upscale = new UpscalePass();
+const dyn = new DynRes(G.isTouch ? 'tunnel-dyn' : null); const upscale = new UpscalePass();
 function applyQuality(q) {
   G.quality = q;
   renderer.setPixelRatio(displayPR());
@@ -160,7 +151,7 @@ function applyQuality(q) {
   bloom.enabled = q > 0; if (gtao) gtao.enabled = q === 2 || (q === 1 && !G.isTouch); if (heat) heat.enabled = !!(gtao && gtao.enabled); if (fxaa) fxaa.enabled = q === 0; if (smaa) smaa.enabled = q === 1; grade.uniforms.uSharp.value = [.2, .3, .36][q];
   const ns = q === 2 ? 4 : 0; for (const t of [composer.renderTarget1, composer.renderTarget2]) if (t.samples !== ns) { t.samples = ns; t.dispose(); }
   document.querySelectorAll('[data-q]').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.q === q)));
-  try { localStorage.setItem('fence-q', q); } catch (e) {}
+  try { localStorage.setItem('tunnel-q', q); } catch (e) {}
   resize();
 }
 function precompile() {
@@ -171,7 +162,7 @@ G.precompile = () => precompile();
 function resize() {
   const w = innerWidth, h = innerHeight; renderer.setPixelRatio(displayPR()); renderer.setSize(w, h, false); composer.setPixelRatio(internalPR()); composer.setSize(w, h);
   upscale.enabled = internalPR() < displayPR() * .98; upscale.uniforms.uSharp.value = G.quality === 2 ? .6 : .45;
-  camera.aspect = w / h; G.fovBase0 = w < h ? 66 : (w / h > 1.9 ? 50 : 54); G.player && !(G.gear && G.gear.bino) && (G.player.fovBase = G.fovBase0); camera.updateProjectionMatrix();
+  camera.aspect = w / h; G.fovBase0 = w < h ? 66 : (w / h > 1.9 ? 50 : 54); G.player && (G.player.fovBase = G.fovBase0); camera.updateProjectionMatrix();
   if (G.drone) { G.drone.cam.aspect = w / h; G.drone.cam.updateProjectionMatrix(); }
   if (G.weapon) G.weapon.resize(w / h);
   { const pr = internalPR(); if (fxaa) fxaa.material.uniforms.resolution.value.set(1 / (w * pr), 1 / (h * pr)); grade.uniforms.uTx.value.set(1 / (w * pr), 1 / (h * pr)); uav.uniforms.uTx.value.set(1 / (w * pr), 1 / (h * pr)); grade.uniforms.uAspect.value = w / h; if (smaa) smaa.setSize(w * pr, h * pr); }
@@ -182,52 +173,53 @@ function activeCam() { return G.drone && G.drone.active ? G.drone.cam : camera; 
 
 // ---------- boot ----------
 async function boot() {
-  $('loadtxt').textContent = 'טוען דמויות, נשק ורכבים…';
-  await loadAll(p => { $('loadbar').style.transform = `scaleX(${p * .85})`; $('loadpct').textContent = Math.round(p * 85) + '%'; }, {
-    chars: ['team', 'team2', 'team3', 'guard1', 'guard2', 'fighter', 'civM1', 'civF1', 'hostM1', 'hostM2', 'pM1', 'pM2', 'pM3', 'pM4', 'pM5'],
-    models: ['m4', 'ak', 'pickup', 'suv', 'hatch', 'barrel', 'jersey'], anims: ['anims_fence.json'], vo: 'fvo.mp3', banks: ['fsfx'],
+  $('loadtxt').textContent = 'טוען דמויות ורכבים…';
+  // the team, a few residents, the armed men; no voice track (a tiny file stands in for it and is dropped)
+  await loadAll(p => { $('loadbar').style.transform = `scaleX(${p * .9})`; $('loadpct').textContent = Math.round(p * 90) + '%'; }, {
+    chars: ['team', 'team2', 'team3', 'fighter', 'civM1', 'civM2', 'civF1'],
+    models: ['m4', 'ak'], anims: ['anims_fence.json'], vo: 'snd/vehicle_engine_godot_truck_town.mp3', banks: [],
     sounds: ['radio_static_doty21_cc0', 'vehicle_engine_godot_truck_town'],
   });
-  $('loadtxt').textContent = 'בונה את קו הגבול…'; await new Promise(r => setTimeout(r, 30));
+  if (A.late) A.late.then(() => { A.snd.vo = null; });
+  $('loadtxt').textContent = 'בונה את השכונה…'; await new Promise(r => setTimeout(r, 30));
   const pm = new THREE.PMREMGenerator(renderer); scene.environment = pm.fromEquirectangular(A.hdr).texture; scene.environmentIntensity = .7;
   A.hdr.colorSpace = THREE.LinearSRGBColorSpace; scene.background = null;
-  // photographic sky, rotated so its bright side sits over the western (sun) horizon, warmed for late afternoon, with haze near the horizon
+  // photographic sky, dimmed and cooled for dawn, with the bright side over the eastern horizon and a pink-gold band low toward the sun
   const skyDome = new THREE.Mesh(new THREE.SphereGeometry(1000, 32, 16), new THREE.ShaderMaterial({
-    uniforms: { map: { value: A.hdr }, uInt: { value: 1.25 }, uRot: { value: 2.2 }, uSun: { value: G.sunDir }, uHaze: { value: new THREE.Color('#d9c2a0') } }, side: THREE.BackSide, depthWrite: false, depthTest: false, fog: false,
+    uniforms: { map: { value: A.hdr }, uInt: { value: .62 }, uRot: { value: -.9 }, uSun: { value: G.sunDir }, uHaze: { value: new THREE.Color('#a9a9b0') } }, side: THREE.BackSide, depthWrite: false, depthTest: false, fog: false,
     vertexShader: 'varying vec3 vDir; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vDir = w.xyz - cameraPosition; gl_Position = projectionMatrix * viewMatrix * w; }',
     fragmentShader: `#include <common>
 uniform sampler2D map; uniform float uInt, uRot; uniform vec3 uSun, uHaze; varying vec3 vDir;
 void main(){ vec3 d = normalize(vDir); float a = atan(d.z, d.x) + uRot; vec2 uv = vec2(a * RECIPROCAL_PI2 + .5, asin(clamp(d.y, -1., 1.)) * RECIPROCAL_PI + .5);
-  vec3 c = texture2D(map, uv).rgb * uInt; c *= vec3(1.1, .98, .84);
+  vec3 c = texture2D(map, uv).rgb * uInt; c *= vec3(.86, .92, 1.08);
   c = mix(vec3(dot(c, vec3(.2126, .7152, .0722))), c, .85);
   // the sun low in smoky air: a disc of its real size (0.53 deg), dimmed and warmed, inside a wide gold aureole; the old
   // 3-degree disc at 5x blew out into a white blob with a ring
   float s = max(dot(d, uSun), 0.), t2 = 2. * (1. - s); c += vec3(1.25, .92, .6) * (pow(s, 2500.) * .4 + pow(s, 60.) * .18 + pow(s, 6.) * .08) + vec3(1.3, 1., .72) * (1. - smoothstep(2.2e-5, 5e-5, t2)) * 16.;
-  float hz = 1. - smoothstep(0., .22, d.y); c = mix(c, uHaze * (1.1 + pow(s, 3.) * .8), hz * .85);
+  float hz = 1. - smoothstep(0., .22, d.y); c = mix(c, uHaze * (.75 + pow(s, 3.) * 1.6 * vec3(1.25, .95, .7)), hz * .85);
   gl_FragColor = vec4(c, 1.0);
 #include <tonemapping_fragment>
 #include <colorspace_fragment>
 }` }));
   skyDome.renderOrder = -1000; skyDome.frustumCulled = false; skyDome.onBeforeRender = (r, s, cam) => { skyDome.position.copy(cam.position); skyDome.updateMatrixWorld(); };
   scene.add(skyDome); G.skyDome = skyDome;
-  try { await Promise.race([document.fonts.load('700 64px "Noto Kufi Arabic"'), new Promise(r => setTimeout(r, 2500))]); } catch (e) {}
   buildMaterials();
-  buildFenceWorld();
+  buildTunnelWorld();
   const geos = G.colliders.map(g => { let q = g.index ? g.toNonIndexed() : g.clone(); const p = new THREE.BufferGeometry(); p.setAttribute('position', q.attributes.position); return p; });
   const merged = mergeGeometries(geos); merged.boundsTree = new MeshBVH(merged, { maxLeafTris: 8 });
   const occ = occluderFrom(G.colliders);
   G.bvhMesh = new THREE.Mesh(merged); G.colliders.length = 0;
   installQueries();
-  // ambient light visibility over the incident area (the wall, the berm, the road and the crowd's ground), see gi.js
+  // ambient light visibility over the edge of the neighbourhood (candidate houses, the fields, the force), see gi.js
   $('loadtxt').textContent = 'מחשב תאורה…'; await new Promise(r => setTimeout(r, 30));
   const giT0 = performance.now();
-  await bakeVolume(renderer, occ, { slot: 'a', min: new THREE.Vector3(-230, 0, -160), max: new THREE.Vector3(60, 14, 160), cell: 2, dirs: G.isTouch ? 40 : 64, res: G.lowMem ? 1024 : G.isTouch ? 1536 : 2048, reach: 900, bounce: .45, strength: .8 });
-  bakeSunShadow(renderer, occ, { min: new THREE.Vector3(-420, 0, -300), max: new THREE.Vector3(140, 24, 300), sunDir: G.sunDir, res: G.lowMem ? 1024 : 2048, near: 54 });
+  await bakeVolume(renderer, occ, { slot: 'a', min: new THREE.Vector3(-250, 0, -140), max: new THREE.Vector3(150, 16, 170), cell: 2, dirs: G.isTouch ? 40 : 64, res: G.lowMem ? 1024 : G.isTouch ? 1536 : 2048, reach: 900, bounce: .45, strength: .8 });
+  bakeSunShadow(renderer, occ, { min: new THREE.Vector3(-480, 0, -380), max: new THREE.Vector3(260, 30, 380), sunDir: G.sunDir, res: G.lowMem ? 1024 : 2048, near: 54 });
   occ.dispose(); G.giBakeMs = Math.round(performance.now() - giT0);
-  G.fx = new FX(); G.player = new Player(); G.weapon = new Weapon(); G.ui = new UI(); G.guide = new Guide(FSTAGES);
-  $('loadtxt').textContent = 'מכין את ההמון…'; await new Promise(r => setTimeout(r, 30));
-  G.crowd = new Crowd(); await G.crowd.bake(renderer, p => { $('loadbar').style.transform = `scaleX(${.85 + p * .15})`; $('loadpct').textContent = Math.round(85 + p * 15) + '%'; });
-  G.fsound = new FenceSound(); G.gear = new Gear(); G.tablet = new Tablet(); G.mission = new FenceMission(); G.command = new Command();
+  G.fx = new FX(); G.player = new Player(); G.weapon = new Weapon(); G.ui = new UI(); G.guide = new Guide(TSTAGES);
+  // the commander carries no weapon here: a free cursor for the buttons, drag to look, the rifle never drawn
+  G.freeCursor = true; document.body.classList.add('cmdmode');
+  G.tablet = new Tablet(); G.mission = new TunnelMission(); G.command = new Command();
   // GTAO from the main pass's depth: its own normal pre-pass re-rendered every mesh (half of all draw calls). The
   // composer's buffers swap an odd number of times per frame, so follow whichever one holds this frame's scene.
   class GTAOFromDepth extends GTAOPass { render(r, w, rb, dt, m) { const d = rb.depthTexture; G.sceneDepth = d; if (d && this.gtaoMaterial.uniforms.tDepth.value !== d) { this.gtaoMaterial.uniforms.tDepth.value = d; this.pdMaterial.uniforms.tDepth.value = d; } super.render(r, w, rb, dt, m); } }
@@ -241,10 +233,10 @@ void main(){ vec3 d = normalize(vDir); float a = atan(d.z, d.x) + uRot; vec2 uv 
   vmPass = new VMPass(G.weapon.scene, G.weapon.cam); vmPass.clear = false; vmPass.clearDepth = false; composer.addPass(vmPass);
   composer.addPass(bloom); composer.addPass(grade); composer.addPass(uav); outPass = new OutputPass(); composer.addPass(outPass); fxaa = new ShaderPass(FXAAShader); composer.addPass(fxaa); smaa = new SMAAPass(innerWidth, innerHeight); composer.addPass(smaa); composer.addPass(upscale);
   initInput(canvas);
-  let q = G.isTouch ? 1 : 2; try { const s = localStorage.getItem('fence-q'); if (s !== null) q = +s; } catch (e) {}
+  let q = G.isTouch ? 1 : 2; try { const s = localStorage.getItem('tunnel-q'); if (s !== null) q = +s; } catch (e) {}
   applyQuality(q);
-  // title backdrop: from the berm, looking west over the wall at the smoke
-  G.player.setPos(V3(FL.cp.x + .2, FL.bermH, FL.cp.z - 2), Math.PI / 2 - .1); G.player.pitch = -.06;
+  // title backdrop: from the command vehicle's rise, looking west over the grove at the first houses
+  G.player.setPos(V3(TL.cmd.x, hT(TL.cmd.x, TL.cmd.z), TL.cmd.z), Math.PI / 2 + .05); G.player.pitch = -.04;
   G.mission.backdrop();
   $('loading').hidden = true; $('menu').hidden = false; G.state = 'menu';
   requestAnimationFrame(frame);
@@ -252,17 +244,19 @@ void main(){ vec3 d = normalize(vDir); float a = atan(d.z, d.x) + uRot; vec2 uv 
 
 // ---------- menus ----------
 function startBriefing() {
-  G.audio.resume(); G.fsound.start();
+  G.audio.resume(); startSound();
   $('menu').hidden = true; $('briefing').hidden = false; G.state = 'briefing';
   G.mission.briefing();
 }
 function startMission() {
   G.audio.clearVoice(); $('briefing').hidden = true; $('hud').hidden = false; $('menu').hidden = true;
   G.stats = { shots: 0, hits: 0, kills: 0, civHits: 0, start: performance.now(), end: 0, damage: 0 };
-  G.mission.start(); precompile(); lock();
+  G.mission.start(); precompile();
 }
-function lock() { if (!G.isTouch && !(G.tablet && G.tablet.open) && !G.freeCursor) { try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (e) {} } }
+function lock() {}
 G.lock = lock;
+// the town's beds go quiet: a dawn neighbourhood, a light wind and the UAV's buzz overhead
+function startSound() { const A = G.audio; if (A.beds) return; A.startAmbience(); A.soundscape = () => {}; for (const k of ['market', 'trade', 'traffic', 'sea']) A.bedGain(k, 0, .1); A.bedGain('wind', .22, 1); A.startMusic(); A.setIntensity(.12); }
 function pause(on) {
   if (on && (G.state === 'play' || G.state === 'cutscene')) { G.prevState = G.state; G.state = 'paused'; $('pause').hidden = false; G.audio.ctx.suspend(); $('diag').textContent = `גרסה ${BUILD} · ${G.fps || '—'} fps · איכות ${['נמוכה', 'בינונית', 'גבוהה'][G.quality]} · רזולוציה ${Math.round((G.isTouch ? dyn.scale : internalPR() / displayPR()) * 100)}%`; }
   else if (!on && G.state === 'paused') { G.state = G.prevState; $('pause').hidden = true; G.audio.resume(); lock(); G.clock.getDelta(); }
@@ -281,7 +275,6 @@ $('bpause').addEventListener('click', () => pause(true));
 document.querySelectorAll('[data-q]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); applyQuality(+b.dataset.q); }));
 $('sens').addEventListener('input', e => { G.settings.sens = +e.target.value; });
 $('subs').addEventListener('change', e => { G.settings.subtitles = e.target.checked; });
-$('voice').addEventListener('change', e => { G.settings.voice = e.target.checked; });
 function phoneFullscreen() { if (!G.isTouch) return; try { const el = document.documentElement; const p = el.requestFullscreen ? el.requestFullscreen({ navigationUI: 'hide' }) : el.webkitRequestFullscreen && el.webkitRequestFullscreen(); if (p && p.then) p.then(() => { try { screen.orientation.lock('landscape').catch(() => {}); } catch (e) {} }).catch(() => {}); } catch (e) {} }
 $('bstart').addEventListener('click', phoneFullscreen);
 bus.on('lock', l => { if (!l && !G.isTouch && !G.freeCursor && (G.state === 'play' || G.state === 'cutscene') && !(G.tablet && G.tablet.open) && !G.noPauseOnUnlock) pause(true); });
@@ -291,10 +284,8 @@ bus.on('key', k => { if (k === 'KeyP') pause(G.state !== 'paused');
 document.addEventListener('visibilitychange', () => { if (document.hidden) pause(true); });
 bus.on('missionFailed', reason => { G.tablet && G.tablet.close(); $('failtxt').innerHTML = reason; setTimeout(() => { $('fail').hidden = false; document.exitPointerLock && document.exitPointerLock(); }, 1400); G.ui.fadeTo(.75, 1.2); G.state = 'end'; });
 bus.on('missionComplete', res => {
-  G.tablet && G.tablet.close(); G.state = 'end'; $('hud').hidden = true; document.exitPointerLock && document.exitPointerLock();
-  G.mission.fillEnd(res);
-  const mem = $('memorial'); const im = $('memimg'); if (!im.getAttribute('src')) im.src = 'assets/barel.jpg'; mem.hidden = false; requestAnimationFrame(() => requestAnimationFrame(() => mem.classList.add('on')));
-  $('bmem').onclick = () => { mem.hidden = true; mem.classList.remove('on'); $('end').hidden = false; };
+  G.tablet && G.tablet.close(); G.state = 'end'; $('hud').hidden = true;
+  G.mission.fillEnd(res); $('end').hidden = false;
 });
 $('bstart').disabled = true;
 // browsers keep audio suspended until a gesture (matters after 'try again', which starts the mission by itself)
@@ -308,10 +299,21 @@ function render() {
   mainPass.camera = d ? G.drone.cam : camera; if (gtao) { gtao.camera = mainPass.camera; } sunFx.camera = mainPass.camera; sunFx.enabled = !d; if (heat) heat.enabled = !d && !!(gtao && gtao.enabled);
   uav.enabled = !!d; uav.uniforms.uIR.value = d && G.drone.ir ? 1 : 0; uav.uniforms.uT.value = G.time;
   if (vmPass) vmPass.enabled = !d && (G.state === 'play' || G.state === 'cutscene');
-  if (d && G.crowd) G.crowd.setHot(!!G.drone.ir);
+  if (d) setHot(!!G.drone.ir);
   if (outPass) { outPass.enabled = uav.enabled || renderer.toneMapping !== THREE.CustomToneMapping || !!G.debug.noMerge; grade.uniforms.uOut.value = outPass.enabled ? 0 : 1; }
   composer.render();
-  if (d && G.crowd) G.crowd.setHot(false);
+  if (d) setHot(false);
+}
+// thermal: people and engines drawn as plain bright surfaces, heat patches (IR-only meshes) switched on, the smoke
+// hidden (thermal sees through it); everything is put back after the feed's frame
+const hotCache = new Map(), warmMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(.62, .62, .62) }); let hotOn = false;
+function hotMat(m) { let h = hotCache.get(m); if (h) return h; h = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.6, 1.6, 1.6), map: m.map || null, alphaTest: m.alphaTest || 0, side: m.side });
+  h.onBeforeCompile = sh => { sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', '#include <map_fragment>\n diffuseColor.rgb = vec3(1.6);'); }; h.customProgramCacheKey = () => 'hot'; hotCache.set(m, h); return h; }
+function setHot(on) {
+  if (hotOn === on) return; hotOn = on; setThermal(on); if (G.fx) G.fx.smoke.pts.visible = !on;
+  const swap = (o, f) => o.traverse(c => { if (!c.isMesh) return; if (on) { c.userData.mat0 = c.material; c.material = f(c.material); } else if (c.userData.mat0) { c.material = c.userData.mat0; c.userData.mat0 = null; } });
+  for (const a of G.actors) swap(a.root, m => a.alive ? hotMat(m) : warmMat);
+  for (const h of G.hotObjects || []) swap(h, () => warmMat);
 }
 function frame() {
   requestAnimationFrame(frame);
@@ -339,22 +341,20 @@ function step(dt) {
   if (G.state === 'menu' || G.state === 'briefing') { G.player.yaw += Math.sin(G.time * .05) * dt * .02; }
   G.player.update(active && !(G.tablet && G.tablet.open) ? dt : 0);
   for (let i = G.actors.length - 1; i >= 0; i--) G.actors[i] && G.actors[i].update(dt);
-  G.gear.pre(dt); G.weapon.update(dt); G.weapon.root.visible = active && G.weapon.root.visible && !(G.gear && G.gear.hideRifle);
-  // phones: far small props off the camera layer (core.js detailCull), measured from the camera in use (the drone's
-  // narrow lens keeps far things big); people and what they carry never
+  // no weapon in hand: a click is an order, never a shot
+  Input.fire = false; Input.ads = false; Input.adsToggle = false; G.weapon.update(dt); G.weapon.root.visible = false;
   if (G.isTouch) detailCullTick(scene, activeCam(), dt, !G.debug.noCull);
-  G.crowd.update(dt); G.gear.update(dt); G.fx.update(dt); updateWorld(dt); G.fsound.update(dt); if (G.birds) G.birds.update(dt); WIND.t.value = G.time;
+  G.fx.update(dt); updateWorld(dt); if (G.birds) G.birds.update(dt); WIND.t.value = G.time;
   const cam = activeCam();
-  G.audio.updateListener(camera); G.audio.update(dt); G.ui.update(dt); G.gear.hud(); G.guide.update(dt); G.tablet.update(dt); if (active) G.command.update(dt);
+  G.audio.updateListener(camera); G.audio.update(dt); G.ui.update(dt); G.guide.update(dt); G.tablet.update(dt); if (active) G.command.update(dt);
+  $('cross').style.opacity = 0;
   const cp = G.drone && G.drone.active ? G.drone.target : camera.position; const ts = (sc.right - sc.left) / sun.shadow.mapSize.x;
   sun.target.position.set(Math.round(cp.x / ts) * ts, 0, Math.round(cp.z / ts) * ts); sun.position.copy(sun.target.position).addScaledVector(G.sunDir, 200);
   grade.uniforms.uT.value = G.time % 10;
-  grade.uniforms.uHurt.value = G.player.alive ? clamp((60 - G.player.health) / 60, 0, 1) * .8 : 1;
-  grade.uniforms.uGas.value = G.gear ? G.gear.eyeGas : 0; grade.uniforms.uBino.value = G.gear && G.gear.bino && !(G.drone && G.drone.active) ? 1 : 0;
-  if (G.flareHolder) G.flareHolder.position.copy(cam.position).addScaledVector(G.sunDir, 2500);
+  grade.uniforms.uHurt.value = 0; grade.uniforms.uGas.value = 0; grade.uniforms.uBino.value = 0;
   G.fx.setScale(innerHeight * internalPR() / (2 * Math.tan(THREE.MathUtils.degToRad(cam.fov / 2))));
-  // dusk: the sun sinks and reddens over the last part of the mission
-  const k = G.mission ? G.mission.dusk || 0 : 0; sun.intensity = 3.4 - k * 1.5; sun.color.setRGB(1, .8 - k * .15, .6 - k * .2); hemi.intensity = 1.05 - k * .35;
+  // the sun climbs and whitens a little over the half hour of the mission
+  const k = G.mission ? clamp(G.mission.t / 900, 0, 1) : 0; sun.intensity = 2.6 + k * .8; sun.color.setRGB(1, .7 + k * .1, .5 + k * .12); hemi.intensity = .9 + k * .2;
 }
-if (location.hash.startsWith('#dev')) { window.G = G; G.THREE = THREE; G.debug.sim = (sec, fps = 20) => { for (let i = 0; i < sec * fps; i++) step(1 / fps); }; G.debug.render = () => { autoExp.snap = true; render(); autoExp.snap = false; }; G.debug.GIU = GIU; G.debug.exposure = () => autoExp.read(renderer); G.debug.startMission = startMission; G.debug.quality = applyQuality; G.debug.briefing = startBriefing; }
+if (location.hash.startsWith('#dev')) { window.G = G; G.THREE = THREE; G.debug.sim = (sec, fps = 20) => { for (let i = 0; i < sec * fps; i++) step(1 / fps); }; G.debug.render = () => { autoExp.snap = true; render(); autoExp.snap = false; }; G.debug.GIU = GIU; G.debug.exposure = () => autoExp.read(renderer); G.debug.startMission = startMission; G.debug.quality = applyQuality; G.debug.briefing = startBriefing; G.debug.setHot = setHot; G.debug.info = () => renderer.info.render; }
 boot().then(() => { $('bstart').disabled = false; if (location.hash === '#retry') { $('bstart').click(); setTimeout(() => $('bskip').click(), 50); } }).catch(e => { console.error(e); err('שגיאה בטעינת המשחק: ' + e.message); });

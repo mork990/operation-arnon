@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>הגדר</title>
+<title>המסדרון</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;900&family=IBM+Plex+Mono:wght@500;600&family=Noto+Kufi+Arabic:wght@700&display=swap">
@@ -586,8 +586,8 @@ body.touch #tgtInfo .acts button,body.touch .ucard button,body.touch .pickbar bu
 
 <div id="loading" class="screen">
   <div class="box">
-    <div class="eyebrow">21.8.2021 · 17:00 · גבול רצועת עזה</div>
-    <h1 class="title">הגדר</h1>
+    <div class="eyebrow">נובמבר 2023 · 10:00 · כביש צלאח א־דין</div>
+    <h1 class="title">המסדרון</h1>
     <div class="bar"><i id="loadbar"></i></div>
     <div class="row" style="justify-content:space-between"><span class="small" id="loadtxt">טוען…</span><span class="small mono" id="loadpct">0%</span></div>
     <div class="net"><span>טעינה ראשונה: הורדה של כל הדמויות, הרכבים והקולות. בפעם הבאה הדפדפן כבר שומר אותם.</span><span class="mono" id="loadmb" dir="ltr"></span></div>
@@ -597,16 +597,16 @@ body.touch #tgtInfo .acts button,body.touch .ucard button,body.touch .pickbar bu
       (() => { const st = [['בונה', .72], ['תאורה', .79]], t = document.getElementById('loadtxt'), bar = document.getElementById('loadbar'), pct = document.getElementById('loadpct');
         new MutationObserver(() => { const s = st.find(([k]) => t.textContent.includes(k)); if (!s) return; bar.parentNode.classList.add('busy'); bar.style.transform = 'scaleX(' + s[1] + ')'; pct.textContent = Math.round(s[1] * 100) + '%'; }).observe(t, { childList: true, characterData: true, subtree: true }); })();
     </script>
-    <p class="small">משימה שנייה. מבוססת על ההפגנה האלימה ליד הקיר בצפון רצועת עזה, שבה נפגע אנושות לוחם מג״ב בראל חדריה שמואלי ז״ל.</p>
+    <p class="small">משימה שלישית. מבוססת על מסדרון הפינוי ההומניטרי מצפון הרצועה לדרומה בנובמבר 2023. הדמויות ושמות הקוד בדויים.</p>
   </div>
 </div>
 
 <div id="menu" class="screen" hidden>
   <div class="col">
-    <div class="missions"><a href="index.html">משימה 1 · מבצע ארנון</a><span class="cur" style="border-radius:4px;padding:6px 10px">משימה 2 · הגדר</span><a href="corridor.html">משימה 3 · המסדרון</a><a href="tunnel.html">משימה 4 · הפיר</a></div>
-    <div class="eyebrow">21 באוגוסט 2021 · 17:00 · הקיר מזרחית לעזה</div>
-    <h1 class="title">הגדר</h1>
-    <p class="lede">חמאס קרא להפגנה מול הקיר. מאות מתפרעים, צמיגים בוערים, ובתוך ההמון גם חמושים. אתה מפקד האירוע. המטרה: שלא יהיה פיגוע, ושאף אחד לא ייפגע.</p>
+    <div class="missions"><a href="index.html">משימה 1 · מבצע ארנון</a><a href="fence.html">משימה 2 · הגדר</a><span class="cur" style="border-radius:4px;padding:6px 10px">משימה 3 · המסדרון</span><a href="tunnel.html">משימה 4 · הפיר</a></div>
+    <div class="eyebrow">נובמבר 2023 · 10:00 · כביש צלאח א־דין, מרכז הרצועה</div>
+    <h1 class="title">המסדרון</h1>
+    <p class="lede">צה״ל פתח לכמה שעות מסדרון לאזרחים שנעים מצפון הרצועה לדרומה. אלפים הולכים ברגל דרך המחסום. אתה מפקד האירוע. המטרה: כולם עוברים בבטחה ובזמן, ואף חמוש לא מנצל את המסדרון.</p>
     <div class="row"><button class="btn" id="bstart">לתדריך</button><button class="btn ghost" id="bhist">רקע היסטורי</button></div>
     <div class="settings">
       <span>גרפיקה</span><div class="seg" role="group" aria-label="איכות"><button data-q="0">נמוכה</button><button data-q="1">בינונית</button><button data-q="2">גבוהה</button></div>
@@ -622,10 +622,10 @@ body.touch #tgtInfo .acts button,body.touch .ucard button,body.touch .pickbar bu
   <div class="mapwrap"><canvas id="map"></canvas></div>
   <div class="side">
     <div class="eyebrow">תדריך · מפקד האירוע</div>
-    <h2 style="margin:0;font-size:30px;font-weight:900">גזרת הקיר, 17:00</h2>
+    <h2 style="margin:0;font-size:30px;font-weight:900">מחסום "אלון", 10:00</h2>
     <ul id="brieflines"></ul>
-    <div class="howto"><b>איך מפקדים</b><ol><li><b>כפתורי הפקודה</b> בתחתית המסך: כריזה, גז, רחפן גז, צלפים וחרכים.</li><li><b>הכרטיס למעלה</b> מראה בכל רגע מה קורה ומה מומלץ לעשות.</li><li><b>הטאבלט</b> (<kbd>T</kbd> / כפתור למעלה): רחפן (גם תרמי), מפה, מודיעין וכל הכוחות.</li><li>ירי חי מותר רק מול סכנת חיים מיידית. כל פגיעה בבלתי־מעורב נספרת.</li></ol>
-    <span>שים לב להתראות המודיעין. הן מגיעות בזמן כדי למנוע את האירוע.</span></div>
+    <div class="howto"><b>איך מפקדים</b><ol><li><b>כפתורי הפקודה</b> בתחתית המסך: כריזה, נתיב 2, קצב המחסום, חובשים, עשן ושריון.</li><li><b>הכרטיס למעלה</b> מראה בכל רגע מה קורה ומה מומלץ לעשות.</li><li><b>הטאבלט</b> (<kbd>T</kbd> / כפתור למעלה): רחפן תצפית (גם תרמי) לזיהוי אנשים, מפה, מודיעין, וכל הכוחות: שריון, כטב״ם חמוש וחיל האוויר.</li><li>האזרחים אינם יעד. עיכוב רק אחרי זיהוי ודאי, תקיפה רק רחוק מאזרחים. כל פגיעה באזרח נספרת יותר מכל דבר אחר.</li></ol>
+    <span>שים לב להתראות המודיעין. הן מגיעות בזמן.</span></div>
     <div class="row"><button class="btn" id="bgo">לעמדה</button><button class="btn ghost" id="bskip">דלג על התדריך</button></div>
   </div>
 </div>
@@ -633,7 +633,7 @@ body.touch #tgtInfo .acts button,body.touch .ucard button,body.touch .pickbar bu
 <div id="hud" hidden>
   <div id="obj"></div>
   <div id="stagebox"><span id="stagen"></span><ol id="stages"></ol></div>
-  <div id="tension"><span><b>מתח בשטח</b><em id="tensv" style="font-style:normal">נמוך</em></span><div class="tbar"><i id="tensbar"></i></div></div>
+  <div id="tension"><span><b>צפיפות במחסום</b><em id="tensv" style="font-style:normal">תקין</em></span><div class="tbar"><i id="tensbar"></i></div><span style="margin-top:4px"><b>עברו</b><em id="passc" class="mono" style="font-style:normal">0</em></span></div>
   <button id="bTablet" style="pointer-events:auto"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="2.5" width="16" height="19" rx="2"/><path d="M10 18.5h4"/></svg>טאבלט<kbd class="keyonly">T</kbd><span class="badge" id="tbBadge">1</span></button>
   <div id="notif" role="status"><b id="notifH"></b><span id="notifT"></span></div>
   <div class="wp" id="wp" hidden><div class="dia"></div><span class="lbl" id="wplbl"></span><span class="dist" id="wpdist"></span></div>
@@ -644,16 +644,16 @@ body.touch #tgtInfo .acts button,body.touch .ucard button,body.touch .pickbar bu
   <div id="timerbox" hidden><span id="timerl"></span><span id="timerv" class="mono">1:30</span></div>
   <div id="ammobox"><span class="wname mono" id="wname">M4A1</span><span><span id="ammo" class="mono">30</span> <span id="res" class="mono">180</span></span></div>
   <div id="hp"><div id="hpv"></div></div>
-  <div id="gearbar"><button data-gear="bino" aria-pressed="false">משקפת<kbd>V</kbd></button><button data-gear="rifle" aria-pressed="false">רובה<kbd>X</kbd></button><button data-gear="gas" aria-pressed="false">מטול גז<kbd>Z</kbd></button></div>
+  <div id="gearbar"><button data-gear="bino" aria-pressed="false">משקפת<kbd>V</kbd></button></div>
   <div id="wmarks"></div>
   <div id="task" aria-live="polite" hidden><div class="th"><span id="taskK">משימה</span><b id="taskT"></b></div><p id="taskP"></p><div class="tacts" id="taskA"></div></div>
   <div id="aimbar"><span id="aimTxt"></span><button id="aimGo">ירה</button><button id="aimX">ביטול</button></div>
   <div id="cmdbar">
     <button data-cmd="spk"><em class="cd"></em><i data-icon="spk"></i><span>כריזה</span><i class="n"></i><kbd>1</kbd></button>
-    <button data-cmd="gas"><em class="cd"></em><i data-icon="gas"></i><span>גז</span><i class="n"></i><kbd>2</kbd></button>
-    <button data-cmd="drone"><em class="cd"></em><i data-icon="drone"></i><span>רחפן גז</span><i class="n"></i><kbd>3</kbd></button>
-    <button data-cmd="snipers"><em class="cd"></em><i data-icon="snipers"></i><span>צלפים לסוללה</span><i class="n"></i><kbd>4</kbd></button>
-    <button data-cmd="slits"><em class="cd"></em><i data-icon="slits"></i><span>סגור חרכים</span><i class="n"></i><kbd>5</kbd></button>
+    <button data-cmd="lane"><em class="cd"></em><i data-icon="lane"></i><span>פתח נתיב 2</span><i class="n"></i><kbd>2</kbd></button>
+    <button data-cmd="flow"><em class="cd"></em><i data-icon="flow"></i><span>קצב: רגיל</span><i class="n"></i><kbd>3</kbd></button>
+    <button data-cmd="med"><em class="cd"></em><i data-icon="med"></i><span>חובשים</span><i class="n"></i><kbd>4</kbd></button>
+    <button data-cmd="cover"><em class="cd"></em><i data-icon="smoke"></i><span>עשן ושריון</span><i class="n"></i><kbd>5</kbd></button>
   </div>
   <div id="cross"><i></i><i></i><i></i><i></i><i></i></div>
   <div id="hitm"></div>
@@ -675,7 +675,7 @@ body.touch #tgtInfo .acts button,body.touch .ucard button,body.touch .pickbar bu
 <div id="tablet" role="dialog" aria-label="טאבלט פיקוד" hidden>
   <div class="bezel">
     <div class="tb-top">
-      <span class="ttl">חפ״ק · שליטה</span>
+      <span class="ttl">חפ״ק · מסדרון</span>
       <div class="tb-tabs" role="tablist"><button role="tab" aria-controls="tb-drone" data-tab="drone" aria-selected="true">רחפן<i class="dot"></i></button><button role="tab" aria-controls="tb-map" data-tab="map" aria-selected="false">מפה<i class="dot"></i></button><button role="tab" aria-controls="tb-intel" data-tab="intel" aria-selected="false">מודיעין<i class="dot"></i></button><button role="tab" aria-controls="tb-forces" data-tab="forces" aria-selected="false">כוחות<i class="dot"></i></button></div>
       <span class="sp"></span><span class="clk" id="tbClock">17:00</span><button id="tbClose" aria-label="סגור את הטאבלט">סגור ✕</button>
     </div>
@@ -686,7 +686,7 @@ body.touch #tgtInfo .acts button,body.touch .ucard button,body.touch .pickbar bu
         <div class="fh tl" id="fhTL"></div><div class="fh tr" id="fhTR"></div><div class="fh bl" id="fhBL"></div>
         <div id="feedHint"></div>
         <div id="tgtInfo"><b id="tgtName"></b><p id="tgtDesc"></p><div class="acts" id="tgtActs"></div></div>
-        <div class="feedctl"><button id="bIR" aria-pressed="false">תרמי</button><button id="bZout" aria-label="הרחק">−</button><button id="bZin" aria-label="קרב">+</button><button id="bTrack" aria-pressed="false">עקוב</button><button id="bHome">לקיר</button></div>
+        <div class="feedctl"><button id="bIR" aria-pressed="false">תרמי</button><button id="bZout" aria-label="הרחק">−</button><button id="bZin" aria-label="קרב">+</button><button id="bTrack" aria-pressed="false">עקוב</button><button id="bHome">למחסום</button></div>
       </section>
       <section role="tabpanel" class="tb-page tb-panel" id="tb-map"><canvas id="tmap"></canvas><div class="maplegend" id="mapLegend"></div></section>
       <section role="tabpanel" class="tb-page tb-panel" id="tb-intel"><ol id="intelList"></ol></section>
@@ -698,53 +698,41 @@ body.touch #tgtInfo .acts button,body.touch .ucard button,body.touch .pickbar bu
   </div>
 </div>
 
-<div id="pause" class="ov" role="dialog" aria-modal="true" aria-labelledby="pauseh" hidden><div class="card"><div class="eyebrow">הגדר · משימה 2</div><h2 id="pauseh">השהיה</h2><div class="row"><button class="btn" id="bresume">המשך</button><button class="btn ghost" id="brestart">התחל מחדש</button><button class="btn ghost" id="bquit">לתפריט</button></div>
+<div id="pause" class="ov" role="dialog" aria-modal="true" aria-labelledby="pauseh" hidden><div class="card"><div class="eyebrow">המסדרון · משימה 3</div><h2 id="pauseh">השהיה</h2><div class="row"><button class="btn" id="bresume">המשך</button><button class="btn ghost" id="brestart">התחל מחדש</button><button class="btn ghost" id="bquit">לתפריט</button></div>
   <div class="settings"><span>גרפיקה</span><div class="seg" role="group" aria-label="איכות"><button data-q="0">נמוכה</button><button data-q="1">בינונית</button><button data-q="2">גבוהה</button></div></div><p class="small" id="diag"></p></div></div>
 <div id="fail" class="ov" role="alertdialog" aria-modal="true" aria-labelledby="failtxt" hidden><div class="card"><div class="eyebrow">המשימה נכשלה</div><h2 id="failtxt"></h2><div class="row"><button class="btn" id="bretry">נסה שוב</button></div></div></div>
 <div id="intro" class="ov" role="dialog" aria-modal="true" aria-labelledby="introh" hidden><div class="card">
-  <div class="eyebrow">17:00 · החפ״ק על הסוללה, 20 מטר מאחורי הקיר</div>
+  <div class="eyebrow">10:00 · החפ״ק על סוללת עפר, מזרחית למחסום</div>
   <h2 id="introh" style="margin:0">אתה מפקד האירוע</h2>
-  <p style="margin:0">המטרה: שלא יהיה פיגוע, ושאף אחד לא ייפגע, משני צדי הקיר. אתה לא יורה בעצמך. אתה נותן פקודות לכוחות.</p>
+  <p style="margin:0">המטרה: כל האזרחים עוברים בבטחה ובזמן, ואף חמוש לא עובר בתוך המסדרון. אתה לא יורה בעצמך. אתה מחליט, והכוחות מבצעים.</p>
   <ul class="introl">
-    <li><span class="ic" data-icon="spk"></span><div><b>כריזה</b> בערבית מרחיקה את רוב המפגינים, בלי לפגוע באיש.</div></li>
-    <li><span class="ic" data-icon="gas"></span><div><b>גז</b> מהצוות או מ<b>רחפן הגז</b>: מכוונים את העיגול הצהוב על הקבוצה ומאשרים. הרוח נושבת אלינו.</div></li>
-    <li><span class="ic" data-icon="snipers"></span><div><b>צלפים וחרכים</b>: מרחיקים את הצלפים מהקיר לסוללה, או סוגרים את החרכים.</div></li>
-    <li><span class="ic" data-icon="tab"></span><div><b>טאבלט</b>: רחפן (גם תרמי), מפה, מודיעין, וכל הכוחות, כולל שריון וחיל האוויר.</div></li>
+    <li><span class="ic" data-icon="lane"></span><div><b>המחסום</b>: נתיב 2, קצב הבדיקה, ועצירה בנקודת ההמתנה כשהתור נדחס.</div></li>
+    <li><span class="ic" data-icon="med"></span><div><b>חובשים</b> לכל מי שהתמוטט או נפצע. <b>כריזה</b> בערבית מרגיעה ומכוונת את הטור.</div></li>
+    <li><span class="ic" data-icon="eye"></span><div><b>רחפן תצפית</b>: נוגעים באדם, וכמה שניות של תצפית קרובה מזהות אם הוא חמוש. עיכוב רק אחרי זיהוי.</div></li>
+    <li><span class="ic" data-icon="smoke"></span><div><b>עשן ושריון</b> חוסמים קו אש. <b>כטב״ם וחיל האוויר</b> רק בזיהוי ודאי, רחוק מאזרחים.</div></li>
   </ul>
   <p class="small" style="margin:0">הכרטיס שלמעלה מראה מה קורה עכשיו ומה מומלץ לעשות. סימון אדום בשטח הוא איום, כחול הוא הכוחות שלנו. <span class="keyonly">במחשב: גרירה עם העכבר מסובבת את המבט, הגלגלת מקרבת, מקשים 1–5 לפקודות ו־F לפעולה המומלצת.</span><span class="touch-only">גרירה על המסך מסובבת את המבט.</span></p>
   <div class="row"><button class="btn" id="bIntro">הבנתי, מתחילים</button></div></div></div>
 <div id="hist" class="ov" role="dialog" aria-modal="true" aria-label="רקע היסטורי" hidden><div class="card">
-  <div class="eyebrow">רקע היסטורי</div><h2>הקיר, 21 באוגוסט 2021</h2>
-  <p>שלושה חודשים אחרי מבצע "שומר החומות" קראו חמאס והפלגים ברצועה להפגנה ליד הגדר, מזרחית לעזה. בשבת, 21 באוגוסט 2021, התקבצו מאות מתפרעים מול קיר הבטון ששימש עמדה לצלפים. הם שרפו צמיגים, השליכו מטענים וניסו למשוך את הנשקים של הלוחמים דרך החרכים בקיר.</p>
-  <p>סמוך לשעה 18:00 רץ פעיל חמאס אל אחד החרכים וירה דרכו באקדח מטווח אפס. הכדור פגע בראשו של לוחם מג״ב, סמ״ר בראל חדריה שמואלי, בן 21. בראל נפטר מפצעיו תשעה ימים אחר כך. באותו לילה תקף חיל האוויר ארבעה מחסני נשק של חמאס.</p>
-  <p>לפי משרד הבריאות בעזה נפצעו באירוע 41 פלסטינים. ילד בן 12 שנפגע בראשו מת מפצעיו כעבור שבוע, וגם פעיל בזרוע הצבאית של חמאס מת מפצעיו.</p>
-  <p>תחקיר צה״ל קבע שהיה נכון לפרוס את הכוחות אחרת, הרחק מהקיר. מאז שונו הנהלים.</p>
-  <p class="small">המשחק מפשט את האירועים. מספרי הנפגעים הם לפי הדיווחים באותם ימים.</p>
+  <div class="eyebrow">רקע היסטורי</div><h2>מסדרון הפינוי, נובמבר 2023</h2>
+  <p>במלחמה שפרצה אחרי 7 באוקטובר 2023 קרא צה״ל לתושבי צפון רצועת עזה לעבור לדרומה, אל מדרום לנחל עזה. בתחילת נובמבר 2023 פתח צה״ל מדי יום, לכמה שעות קבועות, מסדרון לאזרחים לאורך כביש צלאח א־דין, הציר הראשי מצפון לדרום.</p>
+  <p>עשרות אלפי אנשים עברו בו ברגל: משפחות, קשישים, עגלות ועגלות חמור, ומעט רכבים עם דגלים לבנים. בנקודות הבידוק עברו האזרחים במעברים בין גושי בטון. לפי דיווחים מאותם ימים, חמאס ניסה בחלק מהימים למנוע מאנשים לנוע דרומה, והיו גם דיווחים על ירי ועל נפגעים לאורך הציר.</p>
+  <p>המשימה בונה תרחיש בדוי בתוך המציאות הזאת: חובת הכוח היא להעביר את האזרחים בבטחה, ולמנוע מחמושים לנצל את המסדרון.</p>
+  <p class="small">הדמויות, שמות הקוד והאירועים במשימה בדויים ומפושטים, ואינם תיעוד של יום מסוים.</p>
   <div class="row"><button class="btn ghost" id="bhistclose">סגור</button></div></div></div>
-<div id="memorial" class="ov" role="dialog" aria-label="לזכרו" hidden><div class="mem">
-  <div class="memphoto" id="memphoto"><img id="memimg" alt="סמ״ר בראל חדריה שמואלי ז״ל" onerror="this.parentNode.classList.add('noimg')"><div class="ph"><span class="flame" style="margin:0 0 6px"></span><b style="color:var(--ink);font-size:16px">בראל חדריה שמואלי ז״ל</b></div></div>
-  <div class="memtext">
-    <div class="eyebrow">לזכרו</div>
-    <h2>סמ״ר בראל חדריה שמואלי ז״ל <span class="flame" aria-hidden="true"></span></h2>
-    <p>צלף ביחידת המסתערבים של משמר הגבול, מבאר יעקב. ב־21 באוגוסט 2021 ירה מחבל באקדח מטווח אפס דרך חרך בקיר ופגע בו בראשו. בראל נאבק על חייו תשעה ימים ונפטר מפצעיו ב־30 באוגוסט 2021. הוא היה בן 21.</p>
-    <p>המשימה הזאת נבנתה סביב שאלה אחת: איך מונעים אירוע כזה.</p>
-    <p class="yhi">יהי זכרו ברוך.</p>
-    <div class="row"><button class="btn ghost" id="bmem">המשך</button></div>
-  </div></div></div>
 <div id="end" class="ov" role="dialog" aria-label="סיום המשימה" hidden><div class="card">
-  <div class="eyebrow" id="endEyebrow">18:15 · האירוע הסתיים</div>
+  <div class="eyebrow" id="endEyebrow">14:00 · המסדרון נסגר</div>
   <p class="grade" id="endGrade"></p>
   <ul class="outcome" id="endList"></ul>
-  <div class="stats"><div><b id="st-time">—</b><span>משך</span></div><div><b id="st-idf">—</b><span>פצועים שלנו</span></div><div><b id="st-prot">—</b><span>פצועים בצד השני</span></div><div><b id="st-dead">—</b><span>הרוגים</span></div></div>
-  <p class="dedic">סמ״ר בראל חדריה שמואלי ז״ל נפגע אנושות בירי דרך חרך בקיר, ב־21 באוגוסט 2021, ונפטר מפצעיו.</p>
-  <div class="row"><button class="btn" id="bagain">שחק שוב</button><a class="btn ghost" href="index.html" style="text-decoration:none">למשימה 1</a></div>
-  <ul class="credits small"><li>דמויות: <bdi>Microsoft Rocketbox (MIT)</bdi></li><li>רובה M4A1: <bdi>nisu, OpenGameArt (CC0)</bdi></li><li>זרועות: <bdi>kursat_sokmen (CC BY 4.0)</bdi></li><li>רכבים ואביזרים: <bdi>Gazebo models (CC BY 3.0)</bdi></li><li>טקסטורות: <bdi>Poly Haven, ambientCG (CC0), Babylon.js Assets (CC BY 4.0)</bdi></li><li>צלילים: <bdi>ESC-50 (CC BY), Red Eclipse (CC BY-SA), 0 A.D. (CC BY-SA), Kenney (CC0)</bdi></li><li>דיבוב (סינתזה נוירונית מקומית): <bdi>BlueTTS, Max Melichov (MIT)</bdi></li></ul></div></div>
+  <div class="stats"><div><b id="st-time">—</b><span>משך</span></div><div><b id="st-pass">—</b><span>עברו את המחסום</span></div><div><b id="st-civ">—</b><span>אזרחים פצועים</span></div><div><b id="st-idf">—</b><span>לוחמים פצועים</span></div></div>
+  <div class="row"><button class="btn" id="bagain">שחק שוב</button><a class="btn ghost" href="fence.html" style="text-decoration:none">למשימה 2</a><a class="btn ghost" href="index.html" style="text-decoration:none">למשימה 1</a></div>
+  <ul class="credits small"><li>דמויות: <bdi>Microsoft Rocketbox (MIT)</bdi></li><li>רכבים ואביזרים: <bdi>Gazebo models (CC BY 3.0)</bdi></li><li>טקסטורות: <bdi>Poly Haven, ambientCG (CC0), Babylon.js Assets (CC BY 4.0)</bdi></li><li>צלילים: <bdi>ESC-50 (CC BY), Red Eclipse (CC BY-SA), 0 A.D. (CC BY-SA), Kenney (CC0)</bdi></li></ul></div></div>
 <div id="err" hidden></div>
 <div id="rotate"><svg viewBox="0 0 24 24" width="56" height="56" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M3 9a9 9 0 0 1 4-5M21 15a9 9 0 0 1-4 5"/></svg><b>סובב את הטלפון לרוחב</b><span>המשחק בנוי למסך רוחבי</span></div>
 
 <script type="importmap">
 {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/","three-mesh-bvh":"https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.8.3/build/index.module.js"}}
 </script>
-<script type="module" src="js/fence/main.js"></script>
+<script type="module" src="js/corridor/main.js"></script>
 
 </body></html>

@@ -25,14 +25,14 @@ import { Mission, BRIEFING } from './mission.js';
 import { Guide } from './guide.js';
 import { VO } from './vo.js';
 import { bakeVolume, bakeSunShadow, occluderFrom, GIU, giAt } from './gi.js';
-import { AutoExposure, EXPOSURE_GLSL, GRADE_GLSL, GRADE_U, installToneMapping } from './exposure.js';
+import { AutoExposure, EXPOSURE_GLSL, GRADE_GLSL, GRADE_U, TONE_GLSL, TONE_U, installToneMapping } from './exposure.js';
 import { WIND } from './materials.js';
 import { SunFx, SUN_GLSL, HeatHaze } from './sunfx.js';
 import { UpscalePass, DynRes } from './resolution.js';
 
 const $ = id => document.getElementById(id);
 // build number in the menu and the pause card: tells a play-tester which version (and not a cached older script) is running
-const BUILD = 23; $('build').textContent = '· גרסה ' + BUILD;
+const BUILD = 24; $('build').textContent = '· גרסה ' + BUILD;
 const canvas = $('c');
 
 function err(msg) { const e = $('err'); e.hidden = false; e.textContent = msg; }
@@ -46,7 +46,7 @@ canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); err('הג
 // phones: bigger images are resampled at upload (three.js does it against capabilities.maxTextureSize; the shadow map read
 // its limit at construction). A 1024 px texture with mips is 5.3 MB, and on an iPhone it counts against the tab's ceiling
 if (G.isTouch) renderer.capabilities.maxTextureSize = Math.min(renderer.capabilities.maxTextureSize, G.lowMem ? 512 : 1024);
-installToneMapping(renderer); renderer.toneMappingExposure = 1.06; // AgX with a contrast/saturation look (exposure.js)
+installToneMapping(renderer); renderer.toneMappingExposure = 1.06; // gain into the tone curve: +6 % lifts the mid-tones back to where the clipped build-23 frame had the upper ones (exposure.js TONE)
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 G.renderer = renderer;
 installFog();
@@ -88,19 +88,21 @@ const grade = G.grade = new ShaderPass({ uniforms: { tDiffuse: { value: null }, 
   ${EXPOSURE_GLSL}
   ${SUN_GLSL}
   ${GRADE_GLSL}
+  ${TONE_GLSL}
   void main(){vec4 c=vec4(lensFetch(tDiffuse,vUv,uHurt*.004),1.);
     vec3 nb=(texture2D(tDiffuse,vUv+vec2(uTx.x,0.)).rgb+texture2D(tDiffuse,vUv-vec2(uTx.x,0.)).rgb+texture2D(tDiffuse,vUv+vec2(0.,uTx.y)).rgb+texture2D(tDiffuse,vUv-vec2(0.,uTx.y)).rgb)*.25;
     vec3 sf=sunFx(vUv);c.rgb+=sf;nb+=sf;float ex=autoExposure();c.rgb*=ex;nb*=ex;
     vec3 cc=c.rgb/(1.+c.rgb),cn=nb/(1.+nb);cc=clamp(cc+(cc-cn)*uSharp,0.,.995);c.rgb=cc/(1.-cc);
     c.rgb=filmGrade(c.rgb,ex);float l=dot(c.rgb,vec3(.299,.587,.114));c.rgb=mix(vec3(l),c.rgb,1.-uHurt*.5);
-    c.rgb=filmFinish(c.rgb,vUv,uHurt*1.5,uT);gl_FragColor=c;if(uOut>.5)gl_FragColor=sRGBTransferOETF(gl_FragColor);}` });
-// The grade also does the OutputPass's job (one full-screen pass less, on every device). With CustomToneMapping r170's
-// OutputPass only applies the sRGB transfer (its shader has no CUSTOM_TONE_MAPPING branch), so that is all this does;
-// the OutputPass stays in the chain and takes over whenever the renderer is switched to a built-in curve (G.debug.tone).
+    c.rgb=filmFinish(c.rgb,vUv,uHurt*1.5,uT);gl_FragColor=vec4(toneOut(c.rgb),1.);if(uOut>.5)gl_FragColor=sRGBTransferOETF(gl_FragColor);}` });
+// The grade ends with the game's tone curve (toneLook, exposure.js; r170's OutputPass has no CUSTOM_TONE_MAPPING branch,
+// so nothing else would apply it) and also does the OutputPass's sRGB transfer (one full-screen pass less, on every
+// device). The OutputPass stays in the chain and takes over whenever the renderer is switched to a built-in curve
+// (G.debug.tone with ACESFilmicToneMapping, say; NoToneMapping shows the old clipped build-23 frame).
 grade.material.toneMapped = false;
 let outPass = null;
 function post() { if (outPass) { outPass.enabled = renderer.toneMapping !== THREE.CustomToneMapping || !!G.debug.noMerge; grade.uniforms.uOut.value = outPass.enabled ? 0 : 1; } composer.render(); }
-Object.assign(grade.uniforms, autoExp.uniforms, sunFx.uniforms, GRADE_U); // shared objects: the adapted-exposure texture changes every frame
+Object.assign(grade.uniforms, autoExp.uniforms, sunFx.uniforms, GRADE_U, TONE_U); // shared objects: the adapted-exposure texture changes every frame
 
 // ---------- quality ----------
 // render resolution per quality level; phones have dense screens and get a higher cap (dynamic resolution protects the frame rate)

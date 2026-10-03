@@ -62,23 +62,47 @@ export class AutoExposure extends Pass {
 export const EXPOSURE_GLSL = `uniform sampler2D tExp; uniform float uKey, uAlpha, uEvLo, uEvHi, uEvBias;
 float autoExposure(){ float L = texture2D(tExp, vec2(.5)).r; return exp2(clamp((uKey - L) * uAlpha, uEvLo, uEvHi) + uEvBias); }`;
 
-// Tone curve: AgX (graceful highlight roll-off, no hue skew in the bright sky or a muzzle flash) with a contrast and
-// saturation "look" applied in its log domain, as Blender's AgX looks do; plain AgX reads flat and pastel.
-// power 1.2 (was 1.28): the look's power acts on the display-encoded signal, so it deepens shadows far more than
-// mid-tones; at 1.28 a shadow four stops under mid-grey landed at 4/255 and read as crushed ink, at 1.2 it keeps detail.
-// The grade rolls off the most saturated colours on top of this (GRADE_GLSL).
-export const TONE = Object.assign({ power: 1.2, sat: 1.1 }, globalThis.TONE_LOOK || {});
+// Tone curve. Until build 24 none ran: r170's OutputPass has no CustomToneMapping branch and the scene renders into
+// HDR targets, so the frame only got the sRGB transfer and everything above 1.0 (sky, sun, white walls in the sun, a
+// muzzle flash) clipped flat. The curve now runs at the end of the grade pass (toneLook, in linear, before the sRGB
+// transfer). It is AgX's idea without AgX's sigmoid: the channels go through AgX's inset matrix (in Rec.2020) so a
+// bright saturated colour drifts toward white instead of skewing hue (an orange flash goes yellow-white, not pure
+// yellow), a per-channel shoulder compresses them, and the exact inverse of the inset brings them back. Measured
+// against the clipped build-23 frames, AgX's fixed log sigmoid cannot keep the mid-tones: matched at mid-grey it
+// crushes the toe (1 % grey 25 -> 14 of 255) and starts its shoulder so low that a sunlit wall at 0.7 drops from 218
+// to 189, which is the flat, washed look plain AgX had. This shoulder is the identity below about 0.25 (shadows and
+// mid-tones as before) and rolls off above: x / (1 + (x/white)^knee)^(1/knee), so 1.0 lands near 222/255, 2.0 at 245
+// and the sun's 8+ still has a gradient instead of a white plateau.
+//   exp: gain before the curve (the renderer's toneMappingExposure multiplies it); knee: shoulder sharpness (higher
+//   holds the upper mid-tones longer but compresses the top harder); white: asymptote; sat: saturation after the curve.
+export const TONE = Object.assign({ exp: 1, knee: 2.2, white: 1, sat: 1 }, globalThis.TONE_LOOK || {});
+const glslM = m => 'mat3(' + m.elements.map(v => v.toFixed(7)).join(',') + ')';
+// AgX inset (column-major, as in three's tonemapping chunk) after linear sRGB -> Rec.2020, and its exact inverse
+const _toIns = new THREE.Matrix3().fromArray([0.856627153315983, 0.137318972929847, 0.11189821299995, 0.0951212405381588, 0.761241990602591, 0.0767994186031903, 0.0482516061458583, 0.101439036467562, 0.811302368396859])
+  .multiply(new THREE.Matrix3().fromArray([.6274, .0691, .0164, .3293, .9195, .0880, .0433, .0113, .8956]));
+const _fromIns = _toIns.clone().invert();
+// uTone: 1 while the renderer is on CustomToneMapping (the game's curve); G.debug.tone('ACESFilmicToneMapping') turns
+// it off and the OutputPass applies three's built-in curve instead
+export const TONE_U = {
+  uTone: { get value() { return G.renderer && G.renderer.toneMapping === THREE.CustomToneMapping ? 1 : 0; } },
+  uToneExp: { get value() { return TONE.exp * (G.renderer ? G.renderer.toneMappingExposure : 1); } },
+  uToneKnee: { get value() { return TONE.knee; } }, uToneWhite: { get value() { return TONE.white; } }, uToneSat: { get value() { return TONE.sat; } },
+};
+export const TONE_GLSL = `uniform float uTone, uToneExp, uToneKnee, uToneWhite, uToneSat;
+vec3 toneLook(vec3 c){ c = max(${glslM(_toIns)} * (c * uToneExp), 0.);
+  c = c / pow(1. + pow(c / uToneWhite, vec3(uToneKnee)), vec3(1. / uToneKnee));
+  c = max(${glslM(_fromIns)} * c, 0.); float l = dot(c, vec3(.2126, .7152, .0722)); return clamp(l + uToneSat * (c - l), 0., 1.); }
+vec3 toneOut(vec3 c){ return uTone > .5 ? toneLook(c) : c; }`;
+// Anything three renders straight to the screen with tone mapping on gets the same shoulder (with the TONE values at
+// load); the game itself draws through the composer, where only the grade's toneLook applies it.
 export function installToneMapping(renderer) {
-  const src = THREE.ShaderChunk.tonemapping_pars_fragment;
-  const body = src.slice(src.indexOf('vec3 AgXToneMapping'));
-  let fn = body.slice(0, body.indexOf('\n}\n') + 3).replace('vec3 AgXToneMapping', 'vec3 AgXLookToneMapping')
-    .replace(/(color = agxDefaultContrastApprox\( color \);)/, `$1\n\t{ color = pow( max( color, 0. ), vec3( ${TONE.power.toFixed(3)} ) ); float l2 = dot( color, vec3( .2126, .7152, .0722 ) ); color = l2 + ${TONE.sat.toFixed(3)} * ( color - l2 ); }`);
-  if (!/AgXLookToneMapping/.test(fn) || !/pow\( max\( color, 0\. \)/.test(fn)) { console.warn('tone: AgX source not found, keeping AgX'); renderer.toneMapping = THREE.AgXToneMapping; return; }
-  THREE.ShaderChunk.tonemapping_pars_fragment = src.replace('vec3 CustomToneMapping( vec3 color ) { return color; }', fn + '\nvec3 CustomToneMapping( vec3 color ) { return AgXLookToneMapping( color ); }');
+  const src = THREE.ShaderChunk.tonemapping_pars_fragment, stub = 'vec3 CustomToneMapping( vec3 color ) { return color; }';
+  if (src.includes(stub)) THREE.ShaderChunk.tonemapping_pars_fragment = src.replace(stub, `vec3 CustomToneMapping( vec3 color ) { color = max( ${glslM(_toIns)} * ( color * toneMappingExposure * ${TONE.exp.toFixed(4)} ), 0. ); color = color / pow( 1. + pow( color / ${TONE.white.toFixed(4)}, vec3( ${TONE.knee.toFixed(4)} ) ), vec3( ${(1 / TONE.knee).toFixed(5)} ) ); return clamp( max( ${glslM(_fromIns)} * color, 0. ), 0., 1. ); }`);
+  else console.warn('tone: CustomToneMapping stub not found');
   renderer.toneMapping = THREE.CustomToneMapping;
 }
 
-// Film look for the grade pass (linear HDR, after exposure; the AgX curve follows in OutputPass). Most of what makes a
+// Film look for the grade pass (linear HDR, after exposure; toneLook follows at the end of the grade). Most of what makes a
 // frame read as a camera capture rather than a render is what the lens and the film/sensor do to the light:
 //  - veiling glare: a little of the frame's mean light scatters over the whole image inside the glass, so shadows never
 //    sit at pure black and a bright street lifts the shade in it;
